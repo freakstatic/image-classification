@@ -30,12 +30,33 @@ import json
 import threading
 import struct
 
+from org.sleuthkit.autopsy.ingest import IngestModuleIngestJobSettings
+from org.sleuthkit.autopsy.ingest import IngestModuleIngestJobSettingsPanel
+
+from javax.swing import JCheckBox
+from javax.swing import JButton
+from javax.swing import ButtonGroup
+from javax.swing import JTextField
+from javax.swing import JLabel
+from java.awt import GridLayout
+from java.awt import GridBagLayout
+from java.awt import GridBagConstraints
+from javax.swing import JPanel
+from javax.swing import JList
+from javax.swing import JScrollPane
+from javax.swing import JFileChooser
+from javax.swing import JComboBox
+
 HOST = "127.0.0.1"
 PORT = 1337
+
 
 class AutopsyImageClassificationModuleFactory(IngestModuleFactoryAdapter):
     # TODO: give it a unique name.  Will be shown in module list, logs, etc.
     moduleName = "Image Classification"
+
+    def __init__(self):
+        self.settings = None
 
     def getModuleDisplayName(self):
         return self.moduleName
@@ -53,7 +74,21 @@ class AutopsyImageClassificationModuleFactory(IngestModuleFactoryAdapter):
 
     # can return null if isFileIngestModuleFactory returns false
     def createFileIngestModule(self, ingestOptions):
-        return AutopsyImageClassificationModule()
+        return AutopsyImageClassificationModule(self.settings)
+
+    def getDefaultIngestJobSettings(self):
+        return AutopsyImageClassificationModuleWithUISettings()
+
+    def hasIngestJobSettingsPanel(self):
+        return True
+
+    def getIngestJobSettingsPanel(self, settings):
+        if not isinstance(settings, AutopsyImageClassificationModuleWithUISettings):
+            Err_S = "Expected 'settings' argument to be" \
+                    "'AutopsyImageClassificationModuleWithUISettings'"
+            raise IngestModuleException(Err_S)
+        self.settings = settings
+        return AutopsyImageClassificationModuleWithUISettingsPanel(self.settings)
 
 
 class AutopsyImageClassificationModule(FileIngestModule):
@@ -67,6 +102,7 @@ class AutopsyImageClassificationModule(FileIngestModule):
     # See: http://sleuthkit.org/autopsy/docs/api-docs/3.1/classorg_1_1sleuthkit_1_1autopsy_1_1ingest_1_1_ingest_job_context.html
     # TODO: Add any setup code that you need here.
     def startUp(self, context):
+        self.context = context
         # Throw an IngestModule.IngestModuleException exception if there was a problem setting up
         # raise IngestModuleException(IngestModule(), "Oh No!")
         pass
@@ -78,59 +114,58 @@ class AutopsyImageClassificationModule(FileIngestModule):
     def process(self, file):
 
         # Skip non-files
-        if ((file.getType() == TskData.TSK_DB_FILES_TYPE_ENUM.UNALLOC_BLOCKS) or
-                (file.getType() == TskData.TSK_DB_FILES_TYPE_ENUM.UNUSED_BLOCKS) or
-                (file.isFile() == False)):
+        if self.is_non_file(file):
             return IngestModule.ProcessResult.OK
 
         file_name = file.getName().lower()
         # lock = threading.Lock()
         # lock.acquire()
 
-        if file_name.endswith(".png") or file_name.endswith(".jpg") or file_name.endswith(".jpeg"):
+        if not is_image(file_name):
+            return IngestModule.ProcessResult.OK
 
-            self.log(Level.INFO, 'Processing ' + file.getLocalAbsPath())
+        self.log(Level.INFO, 'Processing ' + file.getLocalAbsPath())
 
-            detections = self.get_detections(file.getLocalAbsPath())
+        detections = self.get_detections(file.getLocalAbsPath())
 
-            # Use blackboard class to index blackboard artifacts for keyword search
-            blackboard = Case.getCurrentCase().getServices().getBlackboard()
+        # Use blackboard class to index blackboard artifacts for keyword search
+        blackboard = Case.getCurrentCase().getServices().getBlackboard()
 
-            for detection in detections:
+        for detection in detections:
 
-                # only report the detections with high probability
-                if detection["probability"] < 80:
-                    return IngestModule.ProcessResult.OK
+            # only report the detections with high probability
+            if detection["probability"] < 80:
+                return IngestModule.ProcessResult.OK
 
-                # Make an artifact on the blackboard.  TSK_INTERESTING_FILE_HIT is a generic type of
-                # artifact.  Refer to the developer docs for other examples.
-                art = file.newArtifact(BlackboardArtifact.ARTIFACT_TYPE.TSK_INTERESTING_FILE_HIT)
-                att = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_SET_NAME.getTypeID(),
-                                          AutopsyImageClassificationModuleFactory.moduleName,
-                                          detection["className"].title())
-                art.addAttribute(att)
-                try:
-                    # index the artifact for keyword search
-                    blackboard.indexArtifact(art)
-                except Blackboard.BlackboardException as e:
-                    self.log(Level.SEVERE, "Error indexing artifact " + art.getDisplayName())
+            # Make an artifact on the blackboard.  TSK_INTERESTING_FILE_HIT is a generic type of
+            # artifact.  Refer to the developer docs for other examples.
+            art = file.newArtifact(BlackboardArtifact.ARTIFACT_TYPE.TSK_INTERESTING_FILE_HIT)
+            att = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_SET_NAME.getTypeID(),
+                                      AutopsyImageClassificationModuleFactory.moduleName,
+                                      detection["className"].title())
+            art.addAttribute(att)
+            try:
+                # index the artifact for keyword search
+                blackboard.indexArtifact(art)
+            except Blackboard.BlackboardException as e:
+                self.log(Level.SEVERE, "Error indexing artifact " + art.getDisplayName())
 
-                # Fire an event to notify the UI and others that there is a new artifact
-                IngestServices.getInstance().fireModuleDataEvent(
-                    ModuleDataEvent(AutopsyImageClassificationModuleFactory.moduleName,
-                                    BlackboardArtifact.ARTIFACT_TYPE.TSK_INTERESTING_FILE_HIT))
+            # Fire an event to notify the UI and others that there is a new artifact
+            IngestServices.getInstance().fireModuleDataEvent(
+                ModuleDataEvent(AutopsyImageClassificationModuleFactory.moduleName,
+                                BlackboardArtifact.ARTIFACT_TYPE.TSK_INTERESTING_FILE_HIT))
 
-            self.log(Level.INFO, 'Finish...')
+        self.log(Level.INFO, 'Finish...')
         # lock.release()
 
         return IngestModule.ProcessResult.OK
 
-    def get_detections(self, filePath):
+    def get_detections(self, file_path):
         # Connect the socket
         new_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         new_socket.connect((HOST, PORT))
 
-        new_socket.sendall(filePath)
+        new_socket.sendall(file_path)
 
         # Receive the size of the JSON with the detections
         bytes_received = new_socket.recv(4)
@@ -158,3 +193,92 @@ class AutopsyImageClassificationModule(FileIngestModule):
     def shutDown(self):
 
         None
+
+
+class AutopsyImageClassificationModuleWithUISettings(IngestModuleIngestJobSettings):
+    serialVersionUID = 1L
+
+    def __init__(self):
+        # Note: on Autopsy 4.4.1, the jython interpreter complains
+        # about the non existence of the self.m_insert_duplicate flag.
+        self.m_insert_duplicate = None
+
+    def getVersionNumber(self):
+        return serialVersionUID
+
+
+class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobSettingsPanel):
+
+    def __init__(self, settings):
+        self.local_settings = settings
+        self.initComponents()
+        self.customizeComponents()
+
+    def checkBoxEvent(self, event):
+        pass
+
+    def initComponents(self):
+        self.panel0 = JPanel()
+
+        self.rbgPanel0 = ButtonGroup()
+        self.gbPanel0 = GridBagLayout()
+        self.gbcPanel0 = GridBagConstraints()
+        self.panel0.setLayout(self.gbPanel0)
+
+        self.Exec_Program_CB = JCheckBox("Execute Program", actionPerformed=self.checkBoxEvent)
+        self.gbcPanel0.gridx = 2
+        self.gbcPanel0.gridy = 1
+        self.gbcPanel0.gridwidth = 1
+        self.gbcPanel0.gridheight = 1
+        self.gbcPanel0.fill = GridBagConstraints.BOTH
+        self.gbcPanel0.weightx = 1
+        self.gbcPanel0.weighty = 0
+        self.gbcPanel0.anchor = GridBagConstraints.NORTH
+        self.gbPanel0.setConstraints( self.Exec_Program_CB, self.gbcPanel0 )
+        self.panel0.add( self.Exec_Program_CB )
+
+# self.checkbox = JCheckBox("Do not insert duplicate files",
+        #                           actionPerformed=self.checkBoxEvent)
+        self.gbcPanel0.gridx = 0
+        self.gbcPanel0.gridy = 1
+        self.gbcPanel0.gridwidth = 1
+        self.gbcPanel0.gridheight = 1
+        self.gbcPanel0.fill = GridBagConstraints.BOTH
+        self.gbcPanel0.weightx = 1
+        self.gbcPanel0.weighty = 0
+        self.gbcPanel0.anchor = GridBagConstraints.NORTH
+        # self.gbPanel0.setConstraints(self.checkbox, self.gbcPanel0)
+        # self.panel0.add(self.checkbox)
+
+        self.Program_Executable_TF = JTextField(20)
+        self.Program_Executable_TF.setEnabled(False)
+        self.gbcPanel0.gridx = 2
+        self.gbcPanel0.gridy = 3
+        self.gbcPanel0.gridwidth = 1
+        self.gbcPanel0.gridheight = 1
+        self.gbcPanel0.fill = GridBagConstraints.BOTH
+        self.gbcPanel0.weightx = 1
+        self.gbcPanel0.weighty = 0
+        self.gbcPanel0.anchor = GridBagConstraints.NORTH
+        self.gbPanel0.setConstraints(self.Program_Executable_TF, self.gbcPanel0)
+        self.panel0.add(self.Program_Executable_TF)
+
+        self.add(self.panel0)
+    def customizeComponents(self):
+        pass
+
+    # Return the settings used
+
+
+    def getSettings(self):
+        return self.local_settings
+
+
+def is_image(file_name):
+    return file_name.endswith(".png") or file_name.endswith(".jpg") or file_name.endswith(".jpeg")
+
+
+def is_non_file(file):
+    return ((file.getType() == TskData.TSK_DB_FILES_TYPE_ENUM.UNALLOC_BLOCKS) or
+            (file.getType() == TskData.TSK_DB_FILES_TYPE_ENUM.UNUSED_BLOCKS) or
+            (file.isFile() == False))
