@@ -91,32 +91,7 @@ class AutopsyImageClassificationModule(FileIngestModule):
 
             self.log(Level.INFO, 'Processing ' + file.getLocalAbsPath())
 
-            # Connect the socket
-            new_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            new_socket.connect((HOST, PORT))
-
-            new_socket.sendall(file.getLocalAbsPath())
-
-            # Receive the size of the JSON with the detections
-            bytes_received = new_socket.recv(4)
-            nr_of_bytes_to_receive = struct.unpack("!i", bytes_received)[0]
-
-            # If there are no detections we can return now
-            if nr_of_bytes_to_receive == 0:
-                return IngestModule.ProcessResult.OK
-
-            self.log(Level.INFO, "I will receive: " + str(nr_of_bytes_to_receive))
-            response = new_socket.recv(nr_of_bytes_to_receive)
-
-            # Keep receiving the bytes until the JSON is completed (TCP can split the packages)
-            while len(response) < nr_of_bytes_to_receive:
-                self.log(Level.INFO, "Receiving: " + str(len(response)) + " of " + str(nr_of_bytes_to_receive)
-                         + " bytes")
-                response += new_socket.recv(nr_of_bytes_to_receive)
-
-            self.log(Level.INFO, "Received: " + response)
-
-            detections = json.loads(response)
+            detections = self.get_detections(file.getLocalAbsPath())
 
             # Use blackboard class to index blackboard artifacts for keyword search
             blackboard = Case.getCurrentCase().getServices().getBlackboard()
@@ -144,11 +119,39 @@ class AutopsyImageClassificationModule(FileIngestModule):
                 IngestServices.getInstance().fireModuleDataEvent(
                     ModuleDataEvent(AutopsyImageClassificationModuleFactory.moduleName,
                                     BlackboardArtifact.ARTIFACT_TYPE.TSK_INTERESTING_FILE_HIT))
-            new_socket.close()
+
             self.log(Level.INFO, 'Finish...')
         # lock.release()
 
         return IngestModule.ProcessResult.OK
+
+    def get_detections(self, filePath):
+        # Connect the socket
+        new_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        new_socket.connect((HOST, PORT))
+
+        new_socket.sendall(filePath)
+
+        # Receive the size of the JSON with the detections
+        bytes_received = new_socket.recv(4)
+        nr_of_bytes_to_receive = struct.unpack("!i", bytes_received)[0]
+
+        # If there are no detections we can return now
+        if nr_of_bytes_to_receive == 0:
+            return IngestModule.ProcessResult.OK
+
+        self.log(Level.INFO, "I will receive: " + str(nr_of_bytes_to_receive))
+        response = new_socket.recv(nr_of_bytes_to_receive)
+
+        # Keep receiving the bytes until the JSON is completed (TCP can split the packages)
+        while len(response) < nr_of_bytes_to_receive:
+            self.log(Level.INFO, "Receiving: " + str(len(response)) + " of " + str(nr_of_bytes_to_receive)
+                     + " bytes")
+            response += new_socket.recv(nr_of_bytes_to_receive)
+
+        self.log(Level.INFO, "Received: " + response)
+        new_socket.close()
+        return json.loads(response)
 
     # Where any shutdown code is run and resources are freed.
     # TODO: Add any shutdown code that you need here.
