@@ -8,6 +8,7 @@ from org.sleuthkit.datamodel import SleuthkitCase
 from org.sleuthkit.datamodel import AbstractFile
 from org.sleuthkit.datamodel import ReadContentInputStream
 from org.sleuthkit.datamodel import BlackboardArtifact
+from org.sleuthkit.autopsy.datamodel import BlackboardArtifactNode
 from org.sleuthkit.datamodel import BlackboardAttribute
 from org.sleuthkit.datamodel import TskData
 from org.sleuthkit.autopsy.ingest import IngestModule
@@ -76,17 +77,6 @@ class AutopsyImageClassificationModule(FileIngestModule):
     # TODO: Add your analysis code in here.
     def process(self, file):
 
-        skCase = Case.getCurrentCase().getSleuthkitCase()
-
-        artTypeID = skCase.getArtifactTypeID("TSK_IMAGE_CLASSIFICATION")
-        self.log(Level.INFO, 'Art id: ' + str(artTypeID))
-        if artTypeID < 0:
-            self.log(Level.INFO, 'Adding Artifact Type')
-            skCase.addArtifactType("TSK_IMAGE_CLASSIFICATION", "Image Classification")
-            artTypeID = skCase.getArtifactTypeID("TSK_IMAGE_CLASSIFICATION")
-        artType = skCase.getArtifactType("TSK_IMAGE_CLASSIFICATION")
-        # self.log(Level.INFO, artTypeID)
-
         # Skip non-files
         if ((file.getType() == TskData.TSK_DB_FILES_TYPE_ENUM.UNALLOC_BLOCKS) or
                 (file.getType() == TskData.TSK_DB_FILES_TYPE_ENUM.UNUSED_BLOCKS) or
@@ -137,30 +127,13 @@ class AutopsyImageClassificationModule(FileIngestModule):
                 if detection["probability"] < 80:
                     return IngestModule.ProcessResult.OK
 
-
-                art = file.newArtifact(artTypeID)
-                # attributes = ArrayList()
-                attr = skCase.getAttributeType("TSK_IMAGE_CLASSIFICATION_" + detection["className"].upper())
-                if attr < 0:
-                    attr = skCase.addArtifactAttributeType("TSK_IMAGE_CLASSIFICATION_" + detection["className"].upper(),
-                                                           BlackboardAttribute.TSK_BLACKBOARD_ATTRIBUTE_VALUE_TYPE.STRING, detection["className"].title())
-
-                art.addAttribute(BlackboardAttribute(attr, AutopsyImageClassificationModuleFactory.moduleName, detection["className"].title()))
-                # art.addAttributes(attributes)
-                # blackboard.indexArtifact(art)
-
-
-                # art = file.newArtifact(artTypeID)
-                # att = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_IMAGE_CLASSIFICATION, AutopsyImageClassificationModuleFactory.moduleName, detection["className"].title())
-
                 # Make an artifact on the blackboard.  TSK_INTERESTING_FILE_HIT is a generic type of
                 # artifact.  Refer to the developer docs for other examples.
-                # attributes.add(BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PROG_NAME, moduleName, resultSet.getString("name")))
-                # art = file.newArtifact(BlackboardArtifact.ARTIFACT_TYPE.TSK_SET_NAME)
-                # att = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_SET_NAME .getTypeID(),
-                #                           AutopsyImageClassificationModuleFactory.moduleName,
-                #                           detection["className"].title())
-                # art.addAttribute(att)
+                art = file.newArtifact(BlackboardArtifact.ARTIFACT_TYPE.TSK_INTERESTING_FILE_HIT)
+                att = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_SET_NAME.getTypeID(),
+                                          AutopsyImageClassificationModuleFactory.moduleName,
+                                          detection["className"].title())
+                art.addAttribute(att)
                 try:
                     # index the artifact for keyword search
                     blackboard.indexArtifact(art)
@@ -170,7 +143,7 @@ class AutopsyImageClassificationModule(FileIngestModule):
                 # Fire an event to notify the UI and others that there is a new artifact
                 IngestServices.getInstance().fireModuleDataEvent(
                     ModuleDataEvent(AutopsyImageClassificationModuleFactory.moduleName,
-                                    artType ))
+                                    BlackboardArtifact.ARTIFACT_TYPE.TSK_INTERESTING_FILE_HIT))
             new_socket.close()
             self.log(Level.INFO, 'Finish...')
         # lock.release()
