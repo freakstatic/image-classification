@@ -38,6 +38,7 @@ from javax.swing import JButton
 from javax.swing import ButtonGroup
 from javax.swing import JTextField
 from javax.swing import JLabel
+from java.awt import Dimension
 from java.awt import GridLayout
 from java.awt import GridBagLayout
 from java.awt import GridBagConstraints
@@ -225,20 +226,8 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbcPanel0 = GridBagConstraints()
         self.panel0.setLayout(self.gbPanel0)
 
-        self.Exec_Program_CB = JCheckBox("Execute Program", actionPerformed=self.checkBoxEvent)
-        self.gbcPanel0.gridx = 2
-        self.gbcPanel0.gridy = 1
-        self.gbcPanel0.gridwidth = 1
-        self.gbcPanel0.gridheight = 1
-        self.gbcPanel0.fill = GridBagConstraints.BOTH
-        self.gbcPanel0.weightx = 1
-        self.gbcPanel0.weighty = 0
-        self.gbcPanel0.anchor = GridBagConstraints.NORTH
-        self.gbPanel0.setConstraints( self.Exec_Program_CB, self.gbcPanel0 )
-        self.panel0.add( self.Exec_Program_CB )
-
-# self.checkbox = JCheckBox("Do not insert duplicate files",
-        #                           actionPerformed=self.checkBoxEvent)
+        self.port_L = JLabel("Host:")
+        self.port_L.setEnabled(True)
         self.gbcPanel0.gridx = 0
         self.gbcPanel0.gridy = 1
         self.gbcPanel0.gridwidth = 1
@@ -247,11 +236,49 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbcPanel0.weightx = 1
         self.gbcPanel0.weighty = 0
         self.gbcPanel0.anchor = GridBagConstraints.NORTH
-        # self.gbPanel0.setConstraints(self.checkbox, self.gbcPanel0)
-        # self.panel0.add(self.checkbox)
+        self.gbPanel0.setConstraints(self.port_L, self.gbcPanel0)
+        self.panel0.add(self.port_L)
 
-        self.Program_Executable_TF = JTextField(20)
-        self.Program_Executable_TF.setEnabled(False)
+        self.port_L = JLabel("Port:")
+        self.port_L.setEnabled(True)
+        self.gbcPanel0.gridx = 1
+        self.gbcPanel0.gridy = 1
+        self.gbcPanel0.gridwidth = 1
+        self.gbcPanel0.gridheight = 1
+        self.gbcPanel0.fill = GridBagConstraints.BOTH
+        self.gbcPanel0.weightx = 1
+        self.gbcPanel0.weighty = 0
+        self.gbcPanel0.anchor = GridBagConstraints.NORTH
+        self.gbPanel0.setConstraints(self.port_L, self.gbcPanel0)
+        self.panel0.add(self.port_L)
+
+
+        self.host_TF = JTextField(10)
+        self.gbcPanel0.gridx = 0
+        self.gbcPanel0.gridy = 2
+        self.gbcPanel0.gridwidth = 1
+        self.gbcPanel0.gridheight = 1
+        self.gbcPanel0.fill = GridBagConstraints.BOTH
+        self.gbcPanel0.weightx = 1
+        self.gbcPanel0.weighty = 0
+        self.gbcPanel0.anchor = GridBagConstraints.NORTH
+        self.gbPanel0.setConstraints(self.host_TF, self.gbcPanel0)
+        self.panel0.add(self.host_TF)
+
+        self.port_TF = JTextField(5)
+        self.gbcPanel0.gridx = 1
+        self.gbcPanel0.gridy = 2
+        self.gbcPanel0.gridwidth = 1
+        self.gbcPanel0.gridheight = 1
+        self.gbcPanel0.fill = GridBagConstraints.BOTH
+        self.gbcPanel0.weightx = 1
+        self.gbcPanel0.weighty = 0
+        self.gbcPanel0.anchor = GridBagConstraints.NORTH
+        self.gbPanel0.setConstraints(self.port_TF, self.gbcPanel0)
+        self.panel0.add(self.port_TF)
+
+        self.blank_1_L = JLabel(" ")
+        self.blank_1_L.setEnabled(True)
         self.gbcPanel0.gridx = 2
         self.gbcPanel0.gridy = 3
         self.gbcPanel0.gridwidth = 1
@@ -260,8 +287,131 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbcPanel0.weightx = 1
         self.gbcPanel0.weighty = 0
         self.gbcPanel0.anchor = GridBagConstraints.NORTH
-        self.gbPanel0.setConstraints(self.Program_Executable_TF, self.gbcPanel0)
-        self.panel0.add(self.Program_Executable_TF)
+        self.gbPanel0.setConstraints(self.blank_1_L, self.gbcPanel0)
+        self.panel0.add(self.blank_1_L)
+
+        self.port_L = JLabel("Format of images to process (separator \";\"):")
+        self.port_L.setEnabled(True)
+        self.gbcPanel0.gridx = 0
+        self.gbcPanel0.gridy = 4
+        self.gbcPanel0.gridwidth = 1
+        self.gbcPanel0.gridheight = 1
+        self.gbcPanel0.fill = GridBagConstraints.BOTH
+        self.gbcPanel0.weightx = 1
+        self.gbcPanel0.weighty = 0
+        self.gbcPanel0.anchor = GridBagConstraints.NORTH
+        self.gbPanel0.setConstraints(self.port_L, self.gbcPanel0)
+        self.panel0.add(self.port_L)
+
+        self.image_formats_TF = JTextField(10)
+        self.gbcPanel0.gridx = 0
+        self.gbcPanel0.gridy = 5
+        self.gbcPanel0.gridwidth = 1
+        self.gbcPanel0.gridheight = 1
+        self.gbcPanel0.fill = GridBagConstraints.BOTH
+        self.gbcPanel0.weightx = 1
+        self.gbcPanel0.weighty = 0
+        self.gbcPanel0.anchor = GridBagConstraints.NORTH
+        self.gbPanel0.setConstraints(self.image_formats_TF, self.gbcPanel0)
+        self.panel0.add(self.image_formats_TF)
+
+        self.blank_2_L = JLabel(" ")
+        self.blank_2_L.setEnabled(True)
+        self.gbcPanel0.gridx = 2
+        self.gbcPanel0.gridy = 6
+        self.gbcPanel0.gridwidth = 1
+        self.gbcPanel0.gridheight = 1
+        self.gbcPanel0.fill = GridBagConstraints.BOTH
+        self.gbcPanel0.weightx = 1
+        self.gbcPanel0.weighty = 0
+        self.gbcPanel0.anchor = GridBagConstraints.NORTH
+        self.gbPanel0.setConstraints(self.blank_2_L, self.gbcPanel0)
+        self.panel0.add(self.blank_2_L)
+
+        self.port_L = JLabel("Confidence minimum (%):")
+        self.port_L.setEnabled(True)
+        self.gbcPanel0.gridx = 0
+        self.gbcPanel0.gridy = 7
+        self.gbcPanel0.gridwidth = 1
+        self.gbcPanel0.gridheight = 1
+        self.gbcPanel0.fill = GridBagConstraints.BOTH
+        self.gbcPanel0.weightx = 1
+        self.gbcPanel0.weighty = 0
+        self.gbcPanel0.anchor = GridBagConstraints.NORTH
+        self.gbPanel0.setConstraints(self.port_L, self.gbcPanel0)
+        self.panel0.add(self.port_L)
+
+        self.min_probability = JTextField(10)
+        self.gbcPanel0.gridx = 0
+        self.gbcPanel0.gridy = 8
+        self.gbcPanel0.gridwidth = 1
+        self.gbcPanel0.gridheight = 1
+        self.gbcPanel0.fill = GridBagConstraints.BOTH
+        self.gbcPanel0.weightx = 1
+        self.gbcPanel0.weighty = 0
+        self.gbcPanel0.anchor = GridBagConstraints.NORTH
+        self.gbPanel0.setConstraints(self.min_probability, self.gbcPanel0)
+        self.panel0.add(self.min_probability)
+
+        self.blank_3_L = JLabel(" ")
+        self.blank_3_L.setEnabled(True)
+        self.gbcPanel0.gridx = 2
+        self.gbcPanel0.gridy = 9
+        self.gbcPanel0.gridwidth = 1
+        self.gbcPanel0.gridheight = 1
+        self.gbcPanel0.fill = GridBagConstraints.BOTH
+        self.gbcPanel0.weightx = 1
+        self.gbcPanel0.weighty = 0
+        self.gbcPanel0.anchor = GridBagConstraints.NORTH
+        self.gbPanel0.setConstraints(self.blank_3_L, self.gbcPanel0)
+        self.panel0.add(self.blank_3_L)
+
+        self.min_file_size_L = JLabel("Minimum file size (KB):")
+        self.min_file_size_L.setEnabled(True)
+        self.gbcPanel0.gridx = 0
+        self.gbcPanel0.gridy = 10
+        self.gbcPanel0.gridwidth = 1
+        self.gbcPanel0.gridheight = 1
+        self.gbcPanel0.fill = GridBagConstraints.BOTH
+        self.gbcPanel0.weightx = 1
+        self.gbcPanel0.weighty = 0
+        self.gbcPanel0.anchor = GridBagConstraints.NORTH
+        self.gbPanel0.setConstraints(self.min_file_size_L, self.gbcPanel0)
+        self.panel0.add(self.min_file_size_L)
+
+        self.min_probability_TE = JTextField(10)
+        self.gbcPanel0.gridx = 0
+        self.gbcPanel0.gridy = 11
+        self.gbcPanel0.gridwidth = 1
+        self.gbcPanel0.gridheight = 1
+        self.gbcPanel0.fill = GridBagConstraints.BOTH
+        self.gbcPanel0.weightx = 1
+        self.gbcPanel0.weighty = 0
+        self.gbcPanel0.anchor = GridBagConstraints.NORTH
+        self.gbPanel0.setConstraints(self.min_probability_TE, self.gbcPanel0)
+        self.panel0.add(self.min_probability_TE)
+
+        self.blank_4_L = JLabel(" ")
+        self.blank_4_L.setEnabled(True)
+        self.gbcPanel0.gridx = 2
+        self.gbcPanel0.gridy = 12
+        self.gbcPanel0.gridwidth = 1
+        self.gbcPanel0.gridheight = 1
+        self.gbcPanel0.fill = GridBagConstraints.BOTH
+        self.gbcPanel0.weightx = 1
+        self.gbcPanel0.weighty = 0
+        self.gbcPanel0.anchor = GridBagConstraints.NORTH
+        self.gbPanel0.setConstraints(self.blank_4_L, self.gbcPanel0)
+        self.panel0.add(self.blank_4_L)
+
+        self.save_Settings_BTN = \
+            JButton("Save Settings", actionPerformed=self.save_settings)
+        self.save_Settings_BTN.setPreferredSize(Dimension(1, 20))
+        self.save_Settings_BTN.setEnabled(True)
+        self.gbcPanel0.gridx = 0
+        self.gbcPanel0.gridy = 15
+        self.gbPanel0.setConstraints(self.save_Settings_BTN, self.gbcPanel0)
+        self.panel0.add(self.save_Settings_BTN)
 
         self.add(self.panel0)
     def customizeComponents(self):
@@ -273,6 +423,8 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
     def getSettings(self):
         return self.local_settings
 
+    def save_settings(self):
+        return True
 
 def is_image(file_name):
     return file_name.endswith(".png") or file_name.endswith(".jpg") or file_name.endswith(".jpeg")
