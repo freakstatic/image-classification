@@ -29,6 +29,8 @@ import socket
 import json
 import threading
 import struct
+import io
+import os
 
 from org.sleuthkit.autopsy.ingest import IngestModuleIngestJobSettings
 from org.sleuthkit.autopsy.ingest import IngestModuleIngestJobSettingsPanel
@@ -98,6 +100,10 @@ class AutopsyImageClassificationModule(FileIngestModule):
     def log(self, level, msg):
         self._logger.logp(level, self.__class__.__name__, inspect.stack()[1][3], msg)
 
+    def __init__(self, settings):
+        self.context = None
+        self.local_settings = settings
+
     # Where any setup and configuration is done
     # 'context' is an instance of org.sleuthkit.autopsy.ingest.IngestJobContext.
     # See: http://sleuthkit.org/autopsy/docs/api-docs/3.1/classorg_1_1sleuthkit_1_1autopsy_1_1ingest_1_1_ingest_job_context.html
@@ -115,7 +121,7 @@ class AutopsyImageClassificationModule(FileIngestModule):
     def process(self, file):
 
         # Skip non-files
-        if self.is_non_file(file):
+        if is_non_file(file):
             return IngestModule.ProcessResult.OK
 
         file_name = file.getName().lower()
@@ -209,14 +215,55 @@ class AutopsyImageClassificationModuleWithUISettings(IngestModuleIngestJobSettin
 
 
 class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobSettingsPanel):
+    _logger = Logger.getLogger(AutopsyImageClassificationModuleFactory.moduleName)
+
+    def log(self, level, msg):
+        self._logger.logp(level, self.__class__.__name__, inspect.stack()[1][3], msg)
 
     def __init__(self, settings):
         self.local_settings = settings
+        self.config_location = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'configs.json')
         self.initComponents()
-        self.customizeComponents()
+        self.customize_components()
 
     def checkBoxEvent(self, event):
         pass
+
+    # Return the settings used
+
+    def get_settings(self):
+        with io.open(self.config_location, 'r', encoding='utf-8') as f:
+            self.log(Level.INFO, "Settings file read")
+            local_settings = json.load(f)
+
+        return local_settings
+        # return True
+
+    def save_settings(self, e):
+        self.log(Level.INFO, "Settings save button clicked!")
+
+        configs = {
+            'server': {
+                'host': self.host_TF.getText(),
+                'port': self.port_TF.getText()
+            },
+            'imageFormats': self.image_formats_TF.getText(),
+            'minProbability': self.min_probability_TE.getText(),
+            'minFileSize': self.min_file_size_TE.getText()
+        }
+
+        with io.open(self.config_location, 'w', encoding='utf-8') as f:
+            f.write(json.dumps(configs, ensure_ascii=False))
+
+        self.log(Level.INFO, "Settings saved in " + self.config_location)
+
+    def customize_components(self):
+        settings = self.get_settings()
+        self.host_TF.setText(settings['server']['host'])
+        self.port_TF.setText(settings['server']['port'])
+        self.image_formats_TF.setText(settings['imageFormats'])
+        self.min_probability_TE.setText(settings['minProbability'])
+        self.min_file_size_TE.setText(settings['minFileSize'])
 
     def initComponents(self):
         self.panel0 = JPanel()
@@ -251,7 +298,6 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbcPanel0.anchor = GridBagConstraints.NORTH
         self.gbPanel0.setConstraints(self.port_L, self.gbcPanel0)
         self.panel0.add(self.port_L)
-
 
         self.host_TF = JTextField(10)
         self.gbcPanel0.gridx = 0
@@ -290,7 +336,7 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbPanel0.setConstraints(self.blank_1_L, self.gbcPanel0)
         self.panel0.add(self.blank_1_L)
 
-        self.port_L = JLabel("Format of images to process (separator \";\"):")
+        self.port_L = JLabel("Format of images (separator \";\"):")
         self.port_L.setEnabled(True)
         self.gbcPanel0.gridx = 0
         self.gbcPanel0.gridy = 4
@@ -341,7 +387,7 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbPanel0.setConstraints(self.port_L, self.gbcPanel0)
         self.panel0.add(self.port_L)
 
-        self.min_probability = JTextField(10)
+        self.min_probability_TE = JTextField(10)
         self.gbcPanel0.gridx = 0
         self.gbcPanel0.gridy = 8
         self.gbcPanel0.gridwidth = 1
@@ -350,8 +396,8 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbcPanel0.weightx = 1
         self.gbcPanel0.weighty = 0
         self.gbcPanel0.anchor = GridBagConstraints.NORTH
-        self.gbPanel0.setConstraints(self.min_probability, self.gbcPanel0)
-        self.panel0.add(self.min_probability)
+        self.gbPanel0.setConstraints(self.min_probability_TE, self.gbcPanel0)
+        self.panel0.add(self.min_probability_TE)
 
         self.blank_3_L = JLabel(" ")
         self.blank_3_L.setEnabled(True)
@@ -379,7 +425,7 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbPanel0.setConstraints(self.min_file_size_L, self.gbcPanel0)
         self.panel0.add(self.min_file_size_L)
 
-        self.min_probability_TE = JTextField(10)
+        self.min_file_size_TE = JTextField(10)
         self.gbcPanel0.gridx = 0
         self.gbcPanel0.gridy = 11
         self.gbcPanel0.gridwidth = 1
@@ -388,8 +434,8 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbcPanel0.weightx = 1
         self.gbcPanel0.weighty = 0
         self.gbcPanel0.anchor = GridBagConstraints.NORTH
-        self.gbPanel0.setConstraints(self.min_probability_TE, self.gbcPanel0)
-        self.panel0.add(self.min_probability_TE)
+        self.gbPanel0.setConstraints(self.min_file_size_TE, self.gbcPanel0)
+        self.panel0.add(self.min_file_size_TE)
 
         self.blank_4_L = JLabel(" ")
         self.blank_4_L.setEnabled(True)
@@ -404,27 +450,17 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbPanel0.setConstraints(self.blank_4_L, self.gbcPanel0)
         self.panel0.add(self.blank_4_L)
 
-        self.save_Settings_BTN = \
+        self.save_settings_BTN = \
             JButton("Save Settings", actionPerformed=self.save_settings)
-        self.save_Settings_BTN.setPreferredSize(Dimension(1, 20))
-        self.save_Settings_BTN.setEnabled(True)
+        # self.save_Settings_BTN.setPreferredSize(Dimension(1, 20))
+        self.rbgPanel0.add(self.save_settings_BTN)
         self.gbcPanel0.gridx = 0
         self.gbcPanel0.gridy = 15
-        self.gbPanel0.setConstraints(self.save_Settings_BTN, self.gbcPanel0)
-        self.panel0.add(self.save_Settings_BTN)
+        self.gbPanel0.setConstraints(self.save_settings_BTN, self.gbcPanel0)
+        self.panel0.add(self.save_settings_BTN)
 
         self.add(self.panel0)
-    def customizeComponents(self):
-        pass
 
-    # Return the settings used
-
-
-    def getSettings(self):
-        return self.local_settings
-
-    def save_settings(self):
-        return True
 
 def is_image(file_name):
     return file_name.endswith(".png") or file_name.endswith(".jpg") or file_name.endswith(".jpeg")
