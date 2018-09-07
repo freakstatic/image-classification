@@ -1,0 +1,1 @@
+{"server": {"port": "1337", "host": "127.0.0.1"}, "imageFormats": "jpg;png", "minFileSize": "5", "minProbability": "80"}

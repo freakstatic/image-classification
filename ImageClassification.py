@@ -40,7 +40,6 @@ from javax.swing import JButton
 from javax.swing import ButtonGroup
 from javax.swing import JTextField
 from javax.swing import JLabel
-from java.awt import Dimension
 from java.awt import GridLayout
 from java.awt import GridBagLayout
 from java.awt import GridBagConstraints
@@ -87,9 +86,9 @@ class AutopsyImageClassificationModuleFactory(IngestModuleFactoryAdapter):
 
     def getIngestJobSettingsPanel(self, settings):
         if not isinstance(settings, AutopsyImageClassificationModuleWithUISettings):
-            Err_S = "Expected 'settings' argument to be" \
+            err_S = "Expected 'settings' argument to be" \
                     "'AutopsyImageClassificationModuleWithUISettings'"
-            raise IngestModuleException(Err_S)
+            raise IngestModuleException(err_S)
         self.settings = settings
         return AutopsyImageClassificationModuleWithUISettingsPanel(self.settings)
 
@@ -170,7 +169,11 @@ class AutopsyImageClassificationModule(FileIngestModule):
     def get_detections(self, file_path):
         # Connect the socket
         new_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        new_socket.connect((HOST, PORT))
+        self.log(Level.INFO, '--------------------')
+        self.log(Level.INFO, "Server " + self.local_settings.getServerHost() + ":"
+                 + self.local_settings.getServerPort())
+
+        new_socket.connect((self.local_settings.getServerHost(), int(self.local_settings.getServerPort())))
 
         new_socket.sendall(file_path)
 
@@ -203,16 +206,51 @@ class AutopsyImageClassificationModule(FileIngestModule):
 
 
 class AutopsyImageClassificationModuleWithUISettings(IngestModuleIngestJobSettings):
-    serialVersionUID = 1L
 
     def __init__(self):
+        self.serialVersionUID = 1L
         # Note: on Autopsy 4.4.1, the jython interpreter complains
         # about the non existence of the self.m_insert_duplicate flag.
         self.m_insert_duplicate = None
 
-    def getVersionNumber(self):
-        return serialVersionUID
+        self.server_host = ""
+        self.server_port = ""
+        self.image_formats = ""
+        self.min_file_size = 0
+        self.min_probability = 0
 
+    def getServerHost(self):
+        return self.server_host
+
+    def getServerPort(self):
+        return self.server_port
+
+    def getImageFormats(self):
+        return self.image_formats
+
+    def getMinFileSize(self):
+        return self.min_file_size
+
+    def getMinProbability(self):
+        return self.min_probability
+
+    def getVersionNumber(self):
+        return self.serialVersionUID
+
+    def setServerHost(self, server_host):
+        self.server_host = server_host
+
+    def setServerPort(self, port):
+        self.server_port = port
+
+    def setImageFormats(self, image_formats):
+        self.image_formats = image_formats
+
+    def setMinFileSize(self, min_file_size):
+        self.min_file_size = min_file_size
+
+    def setMinProbability(self, min_probability):
+        self.min_probability = min_probability
 
 class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobSettingsPanel):
     _logger = Logger.getLogger(AutopsyImageClassificationModuleFactory.moduleName)
@@ -224,22 +262,25 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.local_settings = settings
         self.config_location = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'configs.json')
         self.initComponents()
-        self.customize_components()
-
-    def checkBoxEvent(self, event):
-        pass
+        self.customizeComponents()
 
     # Return the settings used
 
-    def get_settings(self):
+    def getSettings(self):
         with io.open(self.config_location, 'r', encoding='utf-8') as f:
             self.log(Level.INFO, "Settings file read")
-            local_settings = json.load(f)
+            json_configs = json.load(f)
 
-        return local_settings
+        self.local_settings.setServerHost(json_configs['server']['host'])
+        self.local_settings.setServerPort(json_configs['server']['port'])
+        self.local_settings.setImageFormats(json_configs['imageFormats'])
+        self.local_settings.setMinFileSize(json_configs['minFileSize'])
+        self.local_settings.setMinProbability(json_configs['minProbability'])
+
+        return self.local_settings
         # return True
 
-    def save_settings(self, e):
+    def saveSettings(self, e):
         self.log(Level.INFO, "Settings save button clicked!")
 
         configs = {
@@ -257,13 +298,14 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
 
         self.log(Level.INFO, "Settings saved in " + self.config_location)
 
-    def customize_components(self):
-        settings = self.get_settings()
-        self.host_TF.setText(settings['server']['host'])
-        self.port_TF.setText(settings['server']['port'])
-        self.image_formats_TF.setText(settings['imageFormats'])
-        self.min_probability_TE.setText(settings['minProbability'])
-        self.min_file_size_TE.setText(settings['minFileSize'])
+    def customizeComponents(self):
+        settings = self.getSettings()
+
+        self.host_TF.setText(settings.getServerHost())
+        self.port_TF.setText(settings.getServerPort())
+        self.image_formats_TF.setText(settings.getImageFormats())
+        self.min_probability_TE.setText(settings.getMinProbability())
+        self.min_file_size_TE.setText(settings.getMinFileSize())
 
     def initComponents(self):
         self.panel0 = JPanel()
@@ -273,8 +315,8 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbcPanel0 = GridBagConstraints()
         self.panel0.setLayout(self.gbPanel0)
 
-        self.port_L = JLabel("Host:")
-        self.port_L.setEnabled(True)
+        self.host_L = JLabel("Host:")
+        self.host_L.setEnabled(True)
         self.gbcPanel0.gridx = 0
         self.gbcPanel0.gridy = 1
         self.gbcPanel0.gridwidth = 1
@@ -283,8 +325,8 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbcPanel0.weightx = 1
         self.gbcPanel0.weighty = 0
         self.gbcPanel0.anchor = GridBagConstraints.NORTH
-        self.gbPanel0.setConstraints(self.port_L, self.gbcPanel0)
-        self.panel0.add(self.port_L)
+        self.gbPanel0.setConstraints(self.host_L, self.gbcPanel0)
+        self.panel0.add(self.host_L)
 
         self.port_L = JLabel("Port:")
         self.port_L.setEnabled(True)
@@ -336,7 +378,7 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbPanel0.setConstraints(self.blank_1_L, self.gbcPanel0)
         self.panel0.add(self.blank_1_L)
 
-        self.port_L = JLabel("Format of images (separator \";\"):")
+        self.image_formats_L = JLabel("Format of images (separator \";\"):")
         self.port_L.setEnabled(True)
         self.gbcPanel0.gridx = 0
         self.gbcPanel0.gridy = 4
@@ -346,8 +388,8 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbcPanel0.weightx = 1
         self.gbcPanel0.weighty = 0
         self.gbcPanel0.anchor = GridBagConstraints.NORTH
-        self.gbPanel0.setConstraints(self.port_L, self.gbcPanel0)
-        self.panel0.add(self.port_L)
+        self.gbPanel0.setConstraints(self.image_formats_L, self.gbcPanel0)
+        self.panel0.add(self.image_formats_L)
 
         self.image_formats_TF = JTextField(10)
         self.gbcPanel0.gridx = 0
@@ -374,7 +416,7 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbPanel0.setConstraints(self.blank_2_L, self.gbcPanel0)
         self.panel0.add(self.blank_2_L)
 
-        self.port_L = JLabel("Confidence minimum (%):")
+        self.min_probability_L = JLabel("Confidence minimum (%):")
         self.port_L.setEnabled(True)
         self.gbcPanel0.gridx = 0
         self.gbcPanel0.gridy = 7
@@ -384,8 +426,8 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbcPanel0.weightx = 1
         self.gbcPanel0.weighty = 0
         self.gbcPanel0.anchor = GridBagConstraints.NORTH
-        self.gbPanel0.setConstraints(self.port_L, self.gbcPanel0)
-        self.panel0.add(self.port_L)
+        self.gbPanel0.setConstraints(self.min_probability_L, self.gbcPanel0)
+        self.panel0.add(self.min_probability_L)
 
         self.min_probability_TE = JTextField(10)
         self.gbcPanel0.gridx = 0
@@ -451,7 +493,7 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.panel0.add(self.blank_4_L)
 
         self.save_settings_BTN = \
-            JButton("Save Settings", actionPerformed=self.save_settings)
+            JButton("Save Settings", actionPerformed=self.saveSettings)
         # self.save_Settings_BTN.setPreferredSize(Dimension(1, 20))
         self.rbgPanel0.add(self.save_settings_BTN)
         self.gbcPanel0.gridx = 0
