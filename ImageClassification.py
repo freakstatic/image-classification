@@ -49,9 +49,6 @@ from javax.swing import JScrollPane
 from javax.swing import JFileChooser
 from javax.swing import JComboBox
 
-HOST = "127.0.0.1"
-PORT = 1337
-
 
 class AutopsyImageClassificationModuleFactory(IngestModuleFactoryAdapter):
     # TODO: give it a unique name.  Will be shown in module list, logs, etc.
@@ -86,9 +83,9 @@ class AutopsyImageClassificationModuleFactory(IngestModuleFactoryAdapter):
 
     def getIngestJobSettingsPanel(self, settings):
         if not isinstance(settings, AutopsyImageClassificationModuleWithUISettings):
-            err_S = "Expected 'settings' argument to be" \
+            err_1 = "Expected 'settings' argument to be" \
                     "'AutopsyImageClassificationModuleWithUISettings'"
-            raise IngestModuleException(err_S)
+            raise IngestModuleException(err_1)
         self.settings = settings
         return AutopsyImageClassificationModuleWithUISettingsPanel(self.settings)
 
@@ -106,7 +103,6 @@ class AutopsyImageClassificationModule(FileIngestModule):
     # Where any setup and configuration is done
     # 'context' is an instance of org.sleuthkit.autopsy.ingest.IngestJobContext.
     # See: http://sleuthkit.org/autopsy/docs/api-docs/3.1/classorg_1_1sleuthkit_1_1autopsy_1_1ingest_1_1_ingest_job_context.html
-    # TODO: Add any setup code that you need here.
     def startUp(self, context):
         self.context = context
         # Throw an IngestModule.IngestModuleException exception if there was a problem setting up
@@ -116,7 +112,6 @@ class AutopsyImageClassificationModule(FileIngestModule):
     # Where the analysis is done.  Each file will be passed into here.
     # The 'file' object being passed in is of type org.sleuthkit.datamodel.AbstractFile.
     # See: http://www.sleuthkit.org/sleuthkit/docs/jni-docs/classorg_1_1sleuthkit_1_1datamodel_1_1_abstract_file.html
-    # TODO: Add your analysis code in here.
     def process(self, file):
 
         # Skip non-files
@@ -124,10 +119,15 @@ class AutopsyImageClassificationModule(FileIngestModule):
             return IngestModule.ProcessResult.OK
 
         file_name = file.getName().lower()
-        # lock = threading.Lock()
-        # lock.acquire()
+        if not self.is_image(file_name):
+            return IngestModule.ProcessResult.OK
 
-        if not is_image(file_name):
+        file_size_kb = file.getSize() / 1024
+
+        if file_size_kb < long(float(self.local_settings.getMinFileSize())):
+            self.log(Level.INFO,
+                     "File " + file.getLocalAbsPath() + " ignored because of size under the minimun(" + self.local_settings.getMinFileSize() + "): " +
+                     str(file_size_kb))
             return IngestModule.ProcessResult.OK
 
         self.log(Level.INFO, 'Processing ' + file.getLocalAbsPath())
@@ -140,7 +140,7 @@ class AutopsyImageClassificationModule(FileIngestModule):
         for detection in detections:
 
             # only report the detections with high probability
-            if detection["probability"] < 80:
+            if detection["probability"] < self.local_settings.getMinProbability():
                 return IngestModule.ProcessResult.OK
 
             # Make an artifact on the blackboard.  TSK_INTERESTING_FILE_HIT is a generic type of
@@ -204,6 +204,15 @@ class AutopsyImageClassificationModule(FileIngestModule):
 
         None
 
+    def is_image(self, file_name):
+
+        valid = False
+        for image_format in self.local_settings.getImageFormats():
+            if file_name.endswith("." + image_format):
+                valid = True
+
+        return valid
+
 
 class AutopsyImageClassificationModuleWithUISettings(IngestModuleIngestJobSettings):
 
@@ -252,6 +261,7 @@ class AutopsyImageClassificationModuleWithUISettings(IngestModuleIngestJobSettin
     def setMinProbability(self, min_probability):
         self.min_probability = min_probability
 
+
 class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobSettingsPanel):
     _logger = Logger.getLogger(AutopsyImageClassificationModuleFactory.moduleName)
 
@@ -273,7 +283,15 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
 
         self.local_settings.setServerHost(json_configs['server']['host'])
         self.local_settings.setServerPort(json_configs['server']['port'])
-        self.local_settings.setImageFormats(json_configs['imageFormats'])
+
+        image_formats = json_configs['imageFormats']
+
+        if not isinstance(image_formats, list) or len(image_formats) == 0:
+            err_2 = "Invalid list of image formats given"
+            raise IngestModuleException(err_2)
+
+        self.local_settings.setImageFormats(image_formats)
+
         self.local_settings.setMinFileSize(json_configs['minFileSize'])
         self.local_settings.setMinProbability(json_configs['minProbability'])
 
@@ -283,12 +301,14 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
     def saveSettings(self, e):
         self.log(Level.INFO, "Settings save button clicked!")
 
+        image_formats_array = self.image_formats_TF.getText().split(';')
+
         configs = {
             'server': {
                 'host': self.host_TF.getText(),
                 'port': self.port_TF.getText()
             },
-            'imageFormats': self.image_formats_TF.getText(),
+            'imageFormats': image_formats_array,
             'minProbability': self.min_probability_TE.getText(),
             'minFileSize': self.min_file_size_TE.getText()
         }
@@ -303,7 +323,10 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
 
         self.host_TF.setText(settings.getServerHost())
         self.port_TF.setText(settings.getServerPort())
-        self.image_formats_TF.setText(settings.getImageFormats())
+        self.log(Level.INFO, "[customizeComponents]")
+
+        self.log(Level.INFO, settings.getImageFormats()[0])
+        self.image_formats_TF.setText(';'.join(settings.getImageFormats()))
         self.min_probability_TE.setText(settings.getMinProbability())
         self.min_file_size_TE.setText(settings.getMinFileSize())
 
@@ -502,10 +525,6 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.panel0.add(self.save_settings_BTN)
 
         self.add(self.panel0)
-
-
-def is_image(file_name):
-    return file_name.endswith(".png") or file_name.endswith(".jpg") or file_name.endswith(".jpeg")
 
 
 def is_non_file(file):
