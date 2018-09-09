@@ -30,7 +30,7 @@ import json
 import threading
 import struct
 import io
-import os
+import os, sys, subprocess
 
 from org.sleuthkit.autopsy.ingest import IngestModuleIngestJobSettings
 from org.sleuthkit.autopsy.ingest import IngestModuleIngestJobSettingsPanel
@@ -39,16 +39,31 @@ from javax.swing import JCheckBox
 from javax.swing import JButton
 from javax.swing import ButtonGroup
 from javax.swing import JTextField
+from javax.swing import JFormattedTextField
 from javax.swing import JLabel
 from java.awt import GridLayout
 from java.awt import GridBagLayout
 from java.awt import GridBagConstraints
+from java.awt import Desktop
 from javax.swing import JPanel
 from javax.swing import JList
 from javax.swing import JScrollPane
 from javax.swing import JFileChooser
 from javax.swing import JComboBox
 
+from java.io import File
+from java.text import NumberFormat
+from javax.swing.text import NumberFormatter
+from java.lang import Integer
+from java.awt import Color
+
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 1337
+DEFAULT_IMAGES_FORMAT = "jpg;png;jpeg"
+DEFAULT_MIN_PROBABILITY = 80
+DEFAULT_MIN_FILE_SIZE = 5
+
+CONFIG_FILE_NAME = 'config.json'
 
 class AutopsyImageClassificationModuleFactory(IngestModuleFactoryAdapter):
     # TODO: give it a unique name.  Will be shown in module list, logs, etc.
@@ -126,7 +141,7 @@ class AutopsyImageClassificationModule(FileIngestModule):
 
         if file_size_kb < long(float(self.local_settings.getMinFileSize())):
             self.log(Level.INFO,
-                     "File " + file.getLocalAbsPath() + " ignored because of size under the minimun(" + self.local_settings.getMinFileSize() + "): " +
+                     "File " + file.getLocalAbsPath() + " ignored because the size is under the minimum defined (" + str(self.local_settings.getMinFileSize()) + "): " +
                      str(file_size_kb))
             return IngestModule.ProcessResult.OK
 
@@ -214,10 +229,18 @@ class AutopsyImageClassificationModule(FileIngestModule):
         return valid
 
 
+    def postIngestMessage(self, message):
+        # Create the message
+        message = IngestMessage.createMessage(
+            IngestMessage.MessageType.DATA, self.getModuleName(), message)
+        # Post the message
+        IngestServices.getInstance().postMessage(message)
+
 class AutopsyImageClassificationModuleWithUISettings(IngestModuleIngestJobSettings):
 
+    serialVersionUID = 1L
+
     def __init__(self):
-        self.serialVersionUID = 1L
         # Note: on Autopsy 4.4.1, the jython interpreter complains
         # about the non existence of the self.m_insert_duplicate flag.
         self.m_insert_duplicate = None
@@ -274,61 +297,129 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.initComponents()
         self.customizeComponents()
 
+
     # Return the settings used
 
     def getSettings(self):
-        with io.open(self.config_location, 'r', encoding='utf-8') as f:
-            self.log(Level.INFO, "Settings file read")
-            json_configs = json.load(f)
 
-        self.local_settings.setServerHost(json_configs['server']['host'])
-        self.local_settings.setServerPort(json_configs['server']['port'])
+        if not os.path.isfile(self.config_location):
+            self.log(Level.INFO, "Configuration file not found, loading the default configuration")
+            self.local_settings.setServerHost(DEFAULT_HOST)
+            self.local_settings.setServerPort(DEFAULT_PORT)
+            self.local_settings.setImageFormats(DEFAULT_IMAGES_FORMAT)
+            self.local_settings.setMinFileSize(DEFAULT_MIN_FILE_SIZE)
+            self.local_settings.setMinProbability(DEFAULT_MIN_PROBABILITY)
 
-        image_formats = json_configs['imageFormats']
+            # self.saveSettings(None)
+            return self.local_settings
+        else:
+            if not os.access(self.config_location, os.R_OK):
+                err_string = "Cannot access configuration file, please review the file permissions"
+                raise IngestModuleException(err_string)
 
-        if not isinstance(image_formats, list) or len(image_formats) == 0:
-            err_2 = "Invalid list of image formats given"
-            raise IngestModuleException(err_2)
+            with io.open(self.config_location, 'r', encoding='utf-8') as f:
+                self.log(Level.INFO, "Configuration file read")
+                json_configs = json.load(f)
 
-        self.local_settings.setImageFormats(image_formats)
+            self.local_settings.setServerHost(json_configs['server']['host'])
+            self.local_settings.setServerPort(json_configs['server']['port'])
 
-        self.local_settings.setMinFileSize(json_configs['minFileSize'])
-        self.local_settings.setMinProbability(json_configs['minProbability'])
+            image_formats = json_configs['imageFormats']
 
-        return self.local_settings
-        # return True
+            if not isinstance(image_formats, list) or len(image_formats) == 0:
+                err_string = "Invalid list of image formats given"
+                raise IngestModuleException(err_string)
+
+            self.local_settings.setImageFormats(image_formats)
+
+            self.local_settings.setMinFileSize(json_configs['minFileSize'])
+            self.local_settings.setMinProbability(json_configs['minProbability'])
+
+            return self.local_settings
 
     def saveSettings(self, e):
+        self.message.setText("")
         self.log(Level.INFO, "Settings save button clicked!")
 
-        image_formats_array = self.image_formats_TF.getText().split(';')
+        host = self.host_TF.getText()
+
+        if not host.strip():
+            err_string = "Invalid host"
+            self.error_message.setText(err_string)
+            return
+            # raise IngestModuleException(err_string)
+
+        port = self.port_TF.getText()
+        if not host.strip():
+            err_string = "Invalid port number"
+            self.error_message.setText(err_string)
+            return
+            # raise IngestModuleException(err_string)
+
+        image_formats_array = self.image_formats_TF.getText().strip().split(';')
+        if len(image_formats_array) == 0 or not image_formats_array[0]:
+            err_string = "Invalid image formats"
+            self.error_message.setText(err_string)
+            return
+            # raise IngestModuleException(err_string)
+
+        min_probability_string = self.min_probability_TF.getText().strip()
+        if not min_probability_string:
+            err_string = "Invalid minimum confidence value"
+            self.error_message.setText(err_string)
+            return
+            # raise IngestModuleException(err_string)
+
+        min_probability = int(float(min_probability_string))
+
+        min_file_size_string = self.min_file_size_TF.getText().strip()
+        if not min_file_size_string:
+            err_string = "Invalid minimum file size"
+            self.error_message.setText(err_string)
+            return
+            # raise IngestModuleException(err_string)
+
+        min_file_size = int(float(min_file_size_string))
 
         configs = {
             'server': {
-                'host': self.host_TF.getText(),
-                'port': self.port_TF.getText()
+                'host': host,
+                'port': port
             },
             'imageFormats': image_formats_array,
-            'minProbability': self.min_probability_TE.getText(),
-            'minFileSize': self.min_file_size_TE.getText()
+            'minProbability': min_probability,
+            'minFileSize': min_file_size
         }
 
         with io.open(self.config_location, 'w', encoding='utf-8') as f:
             f.write(json.dumps(configs, ensure_ascii=False))
 
-        self.log(Level.INFO, "Settings saved in " + self.config_location)
+        self.error_message.setText("")
+
+        message = "Settings saved "
+        self.message.setText(message)
+        self.log(Level.INFO, message + " in " + self.config_location)
+
+
+    def openTextEditor(self, e):
+        self.log(Level.INFO, "Lauching external text editor ")
+        if sys.platform == "win32":
+            os.startfile(self.config_location)
+        else:
+            opener ="open" if sys.platform == "darwin" else "xdg-open"
+            subprocess.call([opener, self.config_location])
 
     def customizeComponents(self):
         settings = self.getSettings()
 
         self.host_TF.setText(settings.getServerHost())
-        self.port_TF.setText(settings.getServerPort())
+        self.port_TF.setText(str(settings.getServerPort()))
         self.log(Level.INFO, "[customizeComponents]")
 
         self.log(Level.INFO, settings.getImageFormats()[0])
         self.image_formats_TF.setText(';'.join(settings.getImageFormats()))
-        self.min_probability_TE.setText(settings.getMinProbability())
-        self.min_file_size_TE.setText(settings.getMinFileSize())
+        self.min_probability_TF.setText(str(settings.getMinProbability()))
+        self.min_file_size_TF.setText(str(settings.getMinFileSize()))
 
     def initComponents(self):
         self.panel0 = JPanel()
@@ -355,7 +446,7 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.port_L.setEnabled(True)
         self.gbcPanel0.gridx = 1
         self.gbcPanel0.gridy = 1
-        self.gbcPanel0.gridwidth = 1
+        self.gbcPanel0.gridwidth = 2
         self.gbcPanel0.gridheight = 1
         self.gbcPanel0.fill = GridBagConstraints.BOTH
         self.gbcPanel0.weightx = 1
@@ -376,7 +467,17 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbPanel0.setConstraints(self.host_TF, self.gbcPanel0)
         self.panel0.add(self.host_TF)
 
-        self.port_TF = JTextField(5)
+        format = NumberFormat.getInstance()
+        format.setGroupingUsed(False)
+
+        port_formatter = NumberFormatter(format)
+        port_formatter.setValueClass(Integer)
+        port_formatter.setAllowsInvalid(False)
+        port_formatter.setMinimum(Integer(0))
+        port_formatter.setMaximum(Integer(65535))
+
+
+        self.port_TF = JFormattedTextField(port_formatter)
         self.gbcPanel0.gridx = 1
         self.gbcPanel0.gridy = 2
         self.gbcPanel0.gridwidth = 1
@@ -452,7 +553,13 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbPanel0.setConstraints(self.min_probability_L, self.gbcPanel0)
         self.panel0.add(self.min_probability_L)
 
-        self.min_probability_TE = JTextField(10)
+        min_probabilty_formatter = NumberFormatter(format)
+        min_probabilty_formatter.setValueClass(Integer)
+        min_probabilty_formatter.setAllowsInvalid(False)
+        min_probabilty_formatter.setMinimum(Integer(0))
+        min_probabilty_formatter.setMaximum(Integer(100))
+
+        self.min_probability_TF = JFormattedTextField(min_probabilty_formatter)
         self.gbcPanel0.gridx = 0
         self.gbcPanel0.gridy = 8
         self.gbcPanel0.gridwidth = 1
@@ -461,8 +568,8 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbcPanel0.weightx = 1
         self.gbcPanel0.weighty = 0
         self.gbcPanel0.anchor = GridBagConstraints.NORTH
-        self.gbPanel0.setConstraints(self.min_probability_TE, self.gbcPanel0)
-        self.panel0.add(self.min_probability_TE)
+        self.gbPanel0.setConstraints(self.min_probability_TF, self.gbcPanel0)
+        self.panel0.add(self.min_probability_TF)
 
         self.blank_3_L = JLabel(" ")
         self.blank_3_L.setEnabled(True)
@@ -490,7 +597,12 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbPanel0.setConstraints(self.min_file_size_L, self.gbcPanel0)
         self.panel0.add(self.min_file_size_L)
 
-        self.min_file_size_TE = JTextField(10)
+        min_file_size_formatter = NumberFormatter(format)
+        min_file_size_formatter.setValueClass(Integer)
+        min_file_size_formatter.setAllowsInvalid(False)
+        min_file_size_formatter.setMinimum(Integer(0))
+
+        self.min_file_size_TF = JFormattedTextField(min_file_size_formatter)
         self.gbcPanel0.gridx = 0
         self.gbcPanel0.gridy = 11
         self.gbcPanel0.gridwidth = 1
@@ -499,8 +611,8 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbcPanel0.weightx = 1
         self.gbcPanel0.weighty = 0
         self.gbcPanel0.anchor = GridBagConstraints.NORTH
-        self.gbPanel0.setConstraints(self.min_file_size_TE, self.gbcPanel0)
-        self.panel0.add(self.min_file_size_TE)
+        self.gbPanel0.setConstraints(self.min_file_size_TF, self.gbcPanel0)
+        self.panel0.add(self.min_file_size_TF)
 
         self.blank_4_L = JLabel(" ")
         self.blank_4_L.setEnabled(True)
@@ -515,14 +627,64 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbPanel0.setConstraints(self.blank_4_L, self.gbcPanel0)
         self.panel0.add(self.blank_4_L)
 
+        self.error_message = JLabel("", JLabel.CENTER)
+        self.error_message.setForeground (Color.red)
+        self.error_message.setEnabled(True)
+        self.gbcPanel0.gridx = 0
+        self.gbcPanel0.gridy = 15
+        self.gbcPanel0.gridwidth = 1
+        self.gbcPanel0.gridheight = 1
+        self.gbcPanel0.fill = GridBagConstraints.BOTH
+        self.gbcPanel0.weightx = 1
+        self.gbcPanel0.weighty = 0
+        self.gbcPanel0.anchor = GridBagConstraints.NORTH
+        self.gbPanel0.setConstraints( self.error_message, self.gbcPanel0)
+        self.panel0.add( self.error_message)
+
+        self.message = JLabel("", JLabel.CENTER)
+        self.message.setEnabled(True)
+        self.gbcPanel0.gridx = 0
+        self.gbcPanel0.gridy = 15
+        self.gbcPanel0.gridwidth = 1
+        self.gbcPanel0.gridheight = 1
+        self.gbcPanel0.fill = GridBagConstraints.BOTH
+        self.gbcPanel0.weightx = 1
+        self.gbcPanel0.weighty = 0
+        self.gbcPanel0.anchor = GridBagConstraints.NORTH
+        self.gbPanel0.setConstraints( self.message, self.gbcPanel0)
+        self.panel0.add( self.message)
+
         self.save_settings_BTN = \
             JButton("Save Settings", actionPerformed=self.saveSettings)
         # self.save_Settings_BTN.setPreferredSize(Dimension(1, 20))
         self.rbgPanel0.add(self.save_settings_BTN)
         self.gbcPanel0.gridx = 0
-        self.gbcPanel0.gridy = 15
+        self.gbcPanel0.gridy = 16
         self.gbPanel0.setConstraints(self.save_settings_BTN, self.gbcPanel0)
         self.panel0.add(self.save_settings_BTN)
+
+        self.blank_5_L = JLabel(" ")
+        self.blank_5_L.setEnabled(True)
+        self.gbcPanel0.gridx = 2
+        self.gbcPanel0.gridy = 17
+        self.gbcPanel0.gridwidth = 1
+        self.gbcPanel0.gridheight = 1
+        self.gbcPanel0.fill = GridBagConstraints.BOTH
+        self.gbcPanel0.weightx = 1
+        self.gbcPanel0.weighty = 0
+        self.gbcPanel0.anchor = GridBagConstraints.NORTH
+        self.gbPanel0.setConstraints(self.blank_5_L, self.gbcPanel0)
+        self.panel0.add(self.blank_5_L)
+
+        self.text_editor_BTN = \
+            JButton("Open config file", actionPerformed=self.openTextEditor)
+        # self.save_Settings_BTN.setPreferredSize(Dimension(1, 20))
+        self.rbgPanel0.add(self.text_editor_BTN)
+        self.gbcPanel0.gridx = 0
+        self.gbcPanel0.gridy = 18
+        self.gbPanel0.setConstraints(self.text_editor_BTN, self.gbcPanel0)
+        self.panel0.add(self.text_editor_BTN)
+
 
         self.add(self.panel0)
 
