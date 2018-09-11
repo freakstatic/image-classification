@@ -1,70 +1,47 @@
 # File-level ingest module for Autopsy to classify images
-
-import jarray
-import inspect
-from java.lang import System
+from java.lang import Integer
 from java.util.logging import Level
-from org.sleuthkit.datamodel import SleuthkitCase
-from org.sleuthkit.datamodel import AbstractFile
-from org.sleuthkit.datamodel import ReadContentInputStream
+from java.text import NumberFormat
+from java.awt import Color
+from java.awt import GridBagLayout
+from java.awt import GridBagConstraints
+from javax.swing import JPanel
+from javax.swing import ButtonGroup
+from javax.swing import JTextField
+from javax.swing import JFormattedTextField
+from javax.swing import JLabel
+from javax.swing import JButton
+from javax.swing.text import NumberFormatter
+
 from org.sleuthkit.datamodel import BlackboardArtifact
-from org.sleuthkit.autopsy.datamodel import BlackboardArtifactNode
 from org.sleuthkit.datamodel import BlackboardAttribute
 from org.sleuthkit.datamodel import TskData
 from org.sleuthkit.autopsy.ingest import IngestModule
-from org.sleuthkit.autopsy.ingest.IngestModule import IngestModuleException
-from org.sleuthkit.autopsy.ingest import DataSourceIngestModule
 from org.sleuthkit.autopsy.ingest import FileIngestModule
 from org.sleuthkit.autopsy.ingest import IngestModuleFactoryAdapter
 from org.sleuthkit.autopsy.ingest import IngestMessage
 from org.sleuthkit.autopsy.ingest import IngestServices
 from org.sleuthkit.autopsy.ingest import ModuleDataEvent
+from org.sleuthkit.autopsy.ingest import IngestModuleIngestJobSettings
+from org.sleuthkit.autopsy.ingest import IngestModuleIngestJobSettingsPanel
+from org.sleuthkit.autopsy.ingest.IngestModule import IngestModuleException
 from org.sleuthkit.autopsy.coreutils import Logger
 from org.sleuthkit.autopsy.casemodule import Case
-from org.sleuthkit.autopsy.casemodule.services import Services
-from org.sleuthkit.autopsy.casemodule.services import FileManager
 from org.sleuthkit.autopsy.casemodule.services import Blackboard
-import socket
 
+import inspect
+import socket
 import json
-import threading
 import struct
 import io
 import os, sys, subprocess
 
-from org.sleuthkit.autopsy.ingest import IngestModuleIngestJobSettings
-from org.sleuthkit.autopsy.ingest import IngestModuleIngestJobSettingsPanel
-
-from javax.swing import JCheckBox
-from javax.swing import JButton
-from javax.swing import ButtonGroup
-from javax.swing import JTextField
-from javax.swing import JFormattedTextField
-from javax.swing import JLabel
-from java.awt import GridLayout
-from java.awt import GridBagLayout
-from java.awt import GridBagConstraints
-from java.awt import Desktop
-from javax.swing import JPanel
-from javax.swing import JList
-from javax.swing import JScrollPane
-from javax.swing import JFileChooser
-from javax.swing import JComboBox
-
-from java.io import File
-from java.text import NumberFormat
-from javax.swing.text import NumberFormatter
-from java.lang import Integer
-from java.awt import Color
-
-DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 1337
-DEFAULT_IMAGES_FORMAT = "jpg;png;jpeg"
-DEFAULT_MIN_PROBABILITY = 80
-DEFAULT_MIN_FILE_SIZE = 5
-
 CONFIG_FILE_NAME = 'config.json'
-
+DEFAULT_MIN_FILE_SIZE = 5
+DEFAULT_MIN_PROBABILITY = 80
+DEFAULT_IMAGES_FORMAT = "jpg;png;jpeg"
+DEFAULT_PORT = 1337
+DEFAULT_HOST = "127.0.0.1"
 class AutopsyImageClassificationModuleFactory(IngestModuleFactoryAdapter):
     # TODO: give it a unique name.  Will be shown in module list, logs, etc.
     moduleName = "Image Classification"
@@ -104,9 +81,9 @@ class AutopsyImageClassificationModuleFactory(IngestModuleFactoryAdapter):
         self.settings = settings
         return AutopsyImageClassificationModuleWithUISettingsPanel(self.settings)
 
-
 class AutopsyImageClassificationModule(FileIngestModule):
     _logger = Logger.getLogger(AutopsyImageClassificationModuleFactory.moduleName)
+    MAX_CHUNK_SIZE=1024
 
     def log(self, level, msg):
         self._logger.logp(level, self.__class__.__name__, inspect.stack()[1][3], msg)
@@ -128,21 +105,12 @@ class AutopsyImageClassificationModule(FileIngestModule):
     # The 'file' object being passed in is of type org.sleuthkit.datamodel.AbstractFile.
     # See: http://www.sleuthkit.org/sleuthkit/docs/jni-docs/classorg_1_1sleuthkit_1_1datamodel_1_1_abstract_file.html
     def process(self, file):
-
         # Skip non-files
         if is_non_file(file):
             return IngestModule.ProcessResult.OK
 
         file_name = file.getName().lower()
         if not self.is_image(file_name):
-            return IngestModule.ProcessResult.OK
-
-        file_size_kb = file.getSize() / 1024
-
-        if file_size_kb < long(float(self.local_settings.getMinFileSize())):
-            self.log(Level.INFO,
-                     "File " + file.getLocalAbsPath() + " ignored because the size is under the minimum defined (" + str(self.local_settings.getMinFileSize()) + "): " +
-                     str(file_size_kb))
             return IngestModule.ProcessResult.OK
 
         self.log(Level.INFO, 'Processing ' + file.getLocalAbsPath())
@@ -153,7 +121,6 @@ class AutopsyImageClassificationModule(FileIngestModule):
         blackboard = Case.getCurrentCase().getServices().getBlackboard()
 
         for detection in detections:
-
             # only report the detections with high probability
             if detection["probability"] < self.local_settings.getMinProbability():
                 return IngestModule.ProcessResult.OK
@@ -178,46 +145,64 @@ class AutopsyImageClassificationModule(FileIngestModule):
 
         self.log(Level.INFO, 'Finish...')
         # lock.release()
-
         return IngestModule.ProcessResult.OK
 
     def get_detections(self, file_path):
         # Connect the socket
         new_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.log(Level.INFO, '--------------------')
-        self.log(Level.INFO, "Server " + self.local_settings.getServerHost() + ":"
-                 + self.local_settings.getServerPort())
-
         new_socket.connect((self.local_settings.getServerHost(), int(self.local_settings.getServerPort())))
 
-        new_socket.sendall(file_path)
+        filename, file_extension = os.path.splitext(file_path)
+        new_socket.sendall(file_extension)
+        self.receive_an_int_message(new_socket)
 
-        # Receive the size of the JSON with the detections
-        bytes_received = new_socket.recv(4)
-        nr_of_bytes_to_receive = struct.unpack("!i", bytes_received)[0]
+        #get file size
+        file_size=os.path.getsize(file_path)
+        new_socket.sendall(file_size)
+        self.receive_an_int_message(new_socket)
 
-        # If there are no detections we can return now
-        if nr_of_bytes_to_receive == 0:
-            return IngestModule.ProcessResult.OK
+        self.send_image_and_get_data(new_socket,file_path,file_size)
 
-        self.log(Level.INFO, "I will receive: " + str(nr_of_bytes_to_receive))
-        response = new_socket.recv(nr_of_bytes_to_receive)
+        nr_of_bytes_to_receive = self.receive_an_int_message(new_socket)
+        return_value=None
+        while True:
+            # If there are no detections we can return now
+            if nr_of_bytes_to_receive == 0:
+                return_value=IngestModule.ProcessResult.OK
+                break
+            elif nr_of_bytes_to_receive == -1:
+                self.log(Level.INFO, "Re-send image: "+ file_path)
+                self.send_image_and_get_data(new_socket,file_path,file_size)
+                nr_of_bytes_to_receive = self.receive_an_int_message(new_socket)
+            elif nr_of_bytes_to_receive > 0:
+                response = new_socket.recv(nr_of_bytes_to_receive)
+                self.log(Level.INFO, "Received from image: "+ file_path + "the response: " + response)
+                return_value=json.loads(response)
+                break
 
-        # Keep receiving the bytes until the JSON is completed (TCP can split the packages)
-        while len(response) < nr_of_bytes_to_receive:
-            self.log(Level.INFO, "Receiving: " + str(len(response)) + " of " + str(nr_of_bytes_to_receive)
-                     + " bytes")
-            response += new_socket.recv(nr_of_bytes_to_receive)
-
-        self.log(Level.INFO, "Received: " + response)
         new_socket.close()
-        return json.loads(response)
+        return return_value
 
     # Where any shutdown code is run and resources are freed.
     # TODO: Add any shutdown code that you need here.
     def shutDown(self):
-
         None
+
+    def receive_an_int_message(self,my_socket):
+        bytes_received = my_socket.recv(4)
+        ack_response = struct.unpack("!i", bytes_received)[0]
+        return ack_response
+
+    def send_image_and_get_data(self,new_socket,file_path,file_size):
+        #send file
+        with open(file_path,'rb') as f:
+            file_readed_left=file_size
+            file_chunk=self.MAX_CHUNK_SIZE
+            while file_readed_left>0:
+                if file_readed_left<self.MAX_CHUNK_SIZE:
+                    file_chunk=file_readed_left
+                new_socket.sendall(f.read(file_chunk))
+                file_readed_left=file_readed_left-file_chunk
 
     def is_image(self, file_name):
 
@@ -227,7 +212,6 @@ class AutopsyImageClassificationModule(FileIngestModule):
                 valid = True
 
         return valid
-
 
     def postIngestMessage(self, message):
         # Create the message
@@ -283,7 +267,6 @@ class AutopsyImageClassificationModuleWithUISettings(IngestModuleIngestJobSettin
 
     def setMinProbability(self, min_probability):
         self.min_probability = min_probability
-
 
 class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobSettingsPanel):
     _logger = Logger.getLogger(AutopsyImageClassificationModuleFactory.moduleName)
@@ -687,7 +670,6 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
 
 
         self.add(self.panel0)
-
 
 def is_non_file(file):
     return ((file.getType() == TskData.TSK_DB_FILES_TYPE_ENUM.UNALLOC_BLOCKS) or
