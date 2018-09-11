@@ -43,14 +43,13 @@ DEFAULT_IMAGES_FORMAT = "jpg;png;jpeg"
 DEFAULT_PORT = 1337
 DEFAULT_HOST = "127.0.0.1"
 
-server_status=False
-
 class AutopsyImageClassificationModuleFactory(IngestModuleFactoryAdapter):
     # give it a unique name.  Will be shown in module list, logs, etc.
     moduleName = "Image Classification"
 
     def __init__(self):
         self.settings = None
+        self.server_status = True
 
     def getModuleDisplayName(self):
         return self.moduleName
@@ -68,7 +67,7 @@ class AutopsyImageClassificationModuleFactory(IngestModuleFactoryAdapter):
 
     # can return null if isFileIngestModuleFactory returns false
     def createFileIngestModule(self, ingestOptions):
-        return AutopsyImageClassificationModule(self.settings)
+        return AutopsyImageClassificationModule(self.settings, self.server_status)
 
     def getDefaultIngestJobSettings(self):
         return AutopsyImageClassificationModuleWithUISettings()
@@ -82,17 +81,19 @@ class AutopsyImageClassificationModuleFactory(IngestModuleFactoryAdapter):
                     "'AutopsyImageClassificationModuleWithUISettings'"
             raise IngestModuleException(err_1)
         self.settings = settings
-        return AutopsyImageClassificationModuleWithUISettingsPanel(self.settings)
+        return AutopsyImageClassificationModuleWithUISettingsPanel(self.settings, self.server_status)
+
 
 class AutopsyImageClassificationModule(FileIngestModule):
     _logger = Logger.getLogger(AutopsyImageClassificationModuleFactory.moduleName)
-    MAX_CHUNK_SIZE=1024
+    MAX_CHUNK_SIZE = 1024
 
     def log(self, level, msg):
         self._logger.logp(level, self.__class__.__name__, inspect.stack()[1][3], msg)
 
-    def __init__(self, settings):
+    def __init__(self, settings, server_status):
         self.context = None
+        self.server_status = server_status
         self.local_settings = settings
 
     # Where any setup and configuration is done
@@ -100,7 +101,7 @@ class AutopsyImageClassificationModule(FileIngestModule):
     # See: http://sleuthkit.org/autopsy/docs/api-docs/3.1/classorg_1_1sleuthkit_1_1autopsy_1_1ingest_1_1_ingest_job_context.html
     def startUp(self, context):
         self.context = context
-        if not server_status:
+        if not self.server_status:
             raise IngestModuleException(IngestModule(), "Server is down!")
         pass
 
@@ -159,33 +160,33 @@ class AutopsyImageClassificationModule(FileIngestModule):
         new_socket.sendall(file_extension)
         self.receive_an_int_message(new_socket)
 
-        #get file size
-        file_size=os.path.getsize(file_path)
+        # get file size
+        file_size = os.path.getsize(file_path)
         new_socket.sendall(file_size)
         self.receive_an_int_message(new_socket)
 
-        self.send_image_and_get_data(new_socket,file_path,file_size)
+        self.send_image_and_get_data(new_socket, file_path, file_size)
 
         nr_of_bytes_to_receive = self.receive_an_int_message(new_socket)
-        return_value=None
+        return_value = None
         while True:
             # If there are no detections we can return now
             if nr_of_bytes_to_receive == 0:
-                return_value=IngestModule.ProcessResult.OK
+                return_value = IngestModule.ProcessResult.OK
                 break
             elif nr_of_bytes_to_receive == -1:
-                self.log(Level.INFO, "Re-send image: "+ file_path)
-                self.send_image_and_get_data(new_socket,file_path,file_size)
+                self.log(Level.INFO, "Re-send image: " + file_path)
+                self.send_image_and_get_data(new_socket, file_path, file_size)
                 nr_of_bytes_to_receive = self.receive_an_int_message(new_socket)
             elif nr_of_bytes_to_receive > 0:
                 response = new_socket.recv(nr_of_bytes_to_receive)
                 while len(response) < nr_of_bytes_to_receive:
-                    data = new_socket.recv(nr_of_bytes_to_receive-len(response))
+                    data = new_socket.recv(nr_of_bytes_to_receive - len(response))
                     if not data:
                         break
-                    response+=data
-                self.log(Level.INFO, "Received from image: "+ file_path + "the response: " + response)
-                return_value=json.loads(response)
+                    response += data
+                self.log(Level.INFO, "Received from image: " + file_path + "the response: " + response)
+                return_value = json.loads(response)
                 break
 
         new_socket.close()
@@ -196,21 +197,21 @@ class AutopsyImageClassificationModule(FileIngestModule):
     def shutDown(self):
         None
 
-    def receive_an_int_message(self,my_socket):
+    def receive_an_int_message(self, my_socket):
         bytes_received = my_socket.recv(4)
         ack_response = struct.unpack("!i", bytes_received)[0]
         return ack_response
 
-    def send_image_and_get_data(self,new_socket,file_path,file_size):
-        #send file
-        with open(file_path,'rb') as f:
-            file_readed_left=file_size
-            file_chunk=self.MAX_CHUNK_SIZE
-            while file_readed_left>0:
-                if file_readed_left<self.MAX_CHUNK_SIZE:
-                    file_chunk=file_readed_left
+    def send_image_and_get_data(self, new_socket, file_path, file_size):
+        # send file
+        with open(file_path, 'rb') as f:
+            file_readed_left = file_size
+            file_chunk = self.MAX_CHUNK_SIZE
+            while file_readed_left > 0:
+                if file_readed_left < self.MAX_CHUNK_SIZE:
+                    file_chunk = file_readed_left
                 new_socket.sendall(f.read(file_chunk))
-                file_readed_left=file_readed_left-file_chunk
+                file_readed_left = file_readed_left - file_chunk
 
     def is_image(self, file_name):
 
@@ -221,15 +222,7 @@ class AutopsyImageClassificationModule(FileIngestModule):
 
         return valid
 
-    def postIngestMessage(self, message):
-        # Create the message
-        message = IngestMessage.createMessage(
-            IngestMessage.MessageType.DATA, self.getModuleName(), message)
-        # Post the message
-        IngestServices.getInstance().postMessage(message)
-
 class AutopsyImageClassificationModuleWithUISettings(IngestModuleIngestJobSettings):
-
     serialVersionUID = 1L
 
     def __init__(self):
@@ -276,23 +269,23 @@ class AutopsyImageClassificationModuleWithUISettings(IngestModuleIngestJobSettin
     def setMinProbability(self, min_probability):
         self.min_probability = min_probability
 
+
 class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobSettingsPanel):
     _logger = Logger.getLogger(AutopsyImageClassificationModuleFactory.moduleName)
 
     def log(self, level, msg):
         self._logger.logp(level, self.__class__.__name__, inspect.stack()[1][3], msg)
 
-    def __init__(self, settings):
+    def __init__(self, settings, server_status):
         self.local_settings = settings
+        self.server_status = server_status
         self.config_location = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'configs.json')
-        self.initComponents()
-        self.customizeComponents()
-
+        self.init_components()
+        self.customize_components()
 
     # Return the settings used
 
-    def getSettings(self):
-        global server_status
+    def get_settings(self):
         if not os.path.isfile(self.config_location):
             self.log(Level.INFO, "Configuration file not found, loading the default configuration")
             self.local_settings.setServerHost(DEFAULT_HOST)
@@ -325,25 +318,31 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
 
             self.local_settings.setMinFileSize(json_configs['minFileSize'])
             self.local_settings.setMinProbability(json_configs['minProbability'])
-
-            new_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            new_socket.settimeout(1)
-            try:
-                self.log(Level.INFO, "Testing connection with server")
-                new_socket.connect((self.local_settings.getServerHost(), int(self.local_settings.getServerPort())))
-                server_status=True
-                self.log(Level.INFO, "Server is up")
-            except (socket.timeout, socket.error) as e:
-                server_status=False
-                err_string="Server is down"
-                self.error_message.setText(err_string)
-                self.log(Level.INFO, err_string)
-            finally:
-                new_socket.close()
-
+            self.check_server_connection(None)
             return self.local_settings
 
-    def saveSettings(self, e):
+    def check_server_connection(self, e):
+        new_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        new_socket.settimeout(1)
+        try:
+            self.log(Level.INFO, "Testing connection with server")
+            new_socket.connect((self.local_settings.getServerHost(), int(self.local_settings.getServerPort())))
+            self.server_status = True
+            message_string = "Server is up!"
+            self.log(Level.INFO, message_string)
+            self.error_message.setText("")
+            self.message.setText(message_string)
+
+        except (socket.timeout, socket.error) as e:
+            self.server_status = False
+            err_string = "Server is down"
+            self.error_message.setText(err_string)
+            self.error_message.setText(err_string)
+            self.log(Level.INFO, err_string)
+        finally:
+            new_socket.close()
+
+    def save_settings(self, e):
         self.message.setText("")
         self.log(Level.INFO, "Settings save button clicked!")
 
@@ -406,16 +405,16 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.message.setText(message)
         self.log(Level.INFO, message + " in " + self.config_location)
 
-    def openTextEditor(self, e):
+    def open_text_editor(self, e):
         self.log(Level.INFO, "Lauching external text editor ")
         if sys.platform == "win32":
             subprocess.call(["notepad", self.config_location])
         else:
-            opener ="open" if sys.platform == "darwin" else "xdg-open"
+            opener = "open" if sys.platform == "darwin" else "xdg-open"
             subprocess.call([opener, self.config_location])
 
-    def customizeComponents(self):
-        settings = self.getSettings()
+    def customize_components(self):
+        settings = self.get_settings()
 
         self.host_TF.setText(settings.getServerHost())
         self.port_TF.setText(str(settings.getServerPort()))
@@ -426,7 +425,7 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.min_probability_TF.setText(str(settings.getMinProbability()))
         self.min_file_size_TF.setText(str(settings.getMinFileSize()))
 
-    def initComponents(self):
+    def init_components(self):
         self.panel0 = JPanel()
 
         self.rbgPanel0 = ButtonGroup()
@@ -480,7 +479,6 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         port_formatter.setAllowsInvalid(False)
         port_formatter.setMinimum(Integer(0))
         port_formatter.setMaximum(Integer(65535))
-
 
         self.port_TF = JFormattedTextField(port_formatter)
         self.gbcPanel0.gridx = 1
@@ -633,7 +631,7 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.panel0.add(self.blank_4_L)
 
         self.error_message = JLabel("", JLabel.CENTER)
-        self.error_message.setForeground (Color.red)
+        self.error_message.setForeground(Color.red)
         self.error_message.setEnabled(True)
         self.gbcPanel0.gridx = 0
         self.gbcPanel0.gridy = 15
@@ -643,8 +641,8 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbcPanel0.weightx = 1
         self.gbcPanel0.weighty = 0
         self.gbcPanel0.anchor = GridBagConstraints.NORTH
-        self.gbPanel0.setConstraints( self.error_message, self.gbcPanel0)
-        self.panel0.add( self.error_message)
+        self.gbPanel0.setConstraints(self.error_message, self.gbcPanel0)
+        self.panel0.add(self.error_message)
 
         self.message = JLabel("", JLabel.CENTER)
         self.message.setEnabled(True)
@@ -656,10 +654,10 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbcPanel0.weightx = 1
         self.gbcPanel0.weighty = 0
         self.gbcPanel0.anchor = GridBagConstraints.NORTH
-        self.gbPanel0.setConstraints( self.message, self.gbcPanel0)
-        self.panel0.add( self.message)
+        self.gbPanel0.setConstraints(self.message, self.gbcPanel0)
+        self.panel0.add(self.message)
 
-        self.save_settings_BTN = JButton("Save Settings", actionPerformed=self.saveSettings)
+        self.save_settings_BTN = JButton("Save Settings", actionPerformed=self.save_settings)
         # self.save_Settings_BTN.setPreferredSize(Dimension(1, 20))
         self.rbgPanel0.add(self.save_settings_BTN)
         self.gbcPanel0.gridx = 0
@@ -681,7 +679,7 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.panel0.add(self.blank_5_L)
 
         self.text_editor_BTN = \
-            JButton("Open config file", actionPerformed=self.openTextEditor)
+            JButton("Open config file", actionPerformed=self.open_text_editor)
         # self.save_Settings_BTN.setPreferredSize(Dimension(1, 20))
         self.rbgPanel0.add(self.text_editor_BTN)
         self.gbcPanel0.gridx = 0
@@ -689,8 +687,30 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbPanel0.setConstraints(self.text_editor_BTN, self.gbcPanel0)
         self.panel0.add(self.text_editor_BTN)
 
+        self.blank_6_L = JLabel(" ")
+        self.blank_6_L.setEnabled(True)
+        self.gbcPanel0.gridx = 2
+        self.gbcPanel0.gridy = 19
+        self.gbcPanel0.gridwidth = 1
+        self.gbcPanel0.gridheight = 1
+        self.gbcPanel0.fill = GridBagConstraints.BOTH
+        self.gbcPanel0.weightx = 1
+        self.gbcPanel0.weighty = 0
+        self.gbcPanel0.anchor = GridBagConstraints.NORTH
+        self.gbPanel0.setConstraints(self.blank_6_L, self.gbcPanel0)
+        self.panel0.add(self.blank_6_L)
+
+        self.check_server_connection_BTN = \
+            JButton("Check server connection", actionPerformed=self.check_server_connection)
+        # self.save_Settings_BTN.setPreferredSize(Dimension(1, 20))
+        self.rbgPanel0.add(self.check_server_connection_BTN)
+        self.gbcPanel0.gridx = 0
+        self.gbcPanel0.gridy = 20
+        self.gbPanel0.setConstraints(self.check_server_connection_BTN, self.gbcPanel0)
+        self.panel0.add(self.check_server_connection_BTN)
 
         self.add(self.panel0)
+
 
 def is_non_file(file):
     return ((file.getType() == TskData.TSK_DB_FILES_TYPE_ENUM.UNALLOC_BLOCKS) or
