@@ -49,7 +49,6 @@ class AutopsyImageClassificationModuleFactory(IngestModuleFactoryAdapter):
 
     def __init__(self):
         self.settings = None
-        self.server_status = True
 
     def getModuleDisplayName(self):
         return self.moduleName
@@ -67,7 +66,7 @@ class AutopsyImageClassificationModuleFactory(IngestModuleFactoryAdapter):
 
     # can return null if isFileIngestModuleFactory returns false
     def createFileIngestModule(self, ingestOptions):
-        return AutopsyImageClassificationModule(self.settings, self.server_status)
+        return AutopsyImageClassificationModule(self.settings)
 
     def getDefaultIngestJobSettings(self):
         return AutopsyImageClassificationModuleWithUISettings()
@@ -81,7 +80,7 @@ class AutopsyImageClassificationModuleFactory(IngestModuleFactoryAdapter):
                     "'AutopsyImageClassificationModuleWithUISettings'"
             raise IngestModuleException(err_1)
         self.settings = settings
-        return AutopsyImageClassificationModuleWithUISettingsPanel(self.settings, self.server_status)
+        return AutopsyImageClassificationModuleWithUISettingsPanel(self.settings)
 
 
 class AutopsyImageClassificationModule(FileIngestModule):
@@ -91,9 +90,8 @@ class AutopsyImageClassificationModule(FileIngestModule):
     def log(self, level, msg):
         self._logger.logp(level, self.__class__.__name__, inspect.stack()[1][3], msg)
 
-    def __init__(self, settings, server_status):
+    def __init__(self, settings):
         self.context = None
-        self.server_status = server_status
         self.local_settings = settings
 
     # Where any setup and configuration is done
@@ -101,8 +99,9 @@ class AutopsyImageClassificationModule(FileIngestModule):
     # See: http://sleuthkit.org/autopsy/docs/api-docs/3.1/classorg_1_1sleuthkit_1_1autopsy_1_1ingest_1_1_ingest_job_context.html
     def startUp(self, context):
         self.context = context
-        if not self.server_status:
+        if not self.local_settings.isServerOnline():
             raise IngestModuleException(IngestModule(), "Server is down!")
+            pass
         pass
 
     # Where the analysis is done.  Each file will be passed into here.
@@ -235,6 +234,7 @@ class AutopsyImageClassificationModuleWithUISettings(IngestModuleIngestJobSettin
         self.image_formats = ""
         self.min_file_size = 0
         self.min_probability = 0
+        self.server_online = False
 
     def getServerHost(self):
         return self.server_host
@@ -254,6 +254,9 @@ class AutopsyImageClassificationModuleWithUISettings(IngestModuleIngestJobSettin
     def getVersionNumber(self):
         return self.serialVersionUID
 
+    def isServerOnline(self):
+        return self.server_online
+
     def setServerHost(self, server_host):
         self.server_host = server_host
 
@@ -269,6 +272,9 @@ class AutopsyImageClassificationModuleWithUISettings(IngestModuleIngestJobSettin
     def setMinProbability(self, min_probability):
         self.min_probability = min_probability
 
+    def setIsServerOnline(self, is_server_online):
+        self.server_online = is_server_online
+
 
 class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobSettingsPanel):
     _logger = Logger.getLogger(AutopsyImageClassificationModuleFactory.moduleName)
@@ -276,16 +282,16 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
     def log(self, level, msg):
         self._logger.logp(level, self.__class__.__name__, inspect.stack()[1][3], msg)
 
-    def __init__(self, settings, server_status):
+    def __init__(self, settings):
         self.local_settings = settings
-        self.server_status = server_status
         self.config_location = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'configs.json')
         self.init_components()
         self.customize_components()
+        self.check_server_connection(None)
 
     # Return the settings used
 
-    def get_settings(self):
+    def getSettings(self):
         if not os.path.isfile(self.config_location):
             self.log(Level.INFO, "Configuration file not found, loading the default configuration")
             self.local_settings.setServerHost(DEFAULT_HOST)
@@ -318,26 +324,28 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
 
             self.local_settings.setMinFileSize(json_configs['minFileSize'])
             self.local_settings.setMinProbability(json_configs['minProbability'])
-            self.check_server_connection(None)
             return self.local_settings
 
     def check_server_connection(self, e):
+        message_string = "Testing connection with server..."
+        self.log(Level.INFO, message_string)
+        self.message.setText(message_string)
+        self.error_message.setText("")
+
         new_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         new_socket.settimeout(1)
         try:
-            self.log(Level.INFO, "Testing connection with server")
-            new_socket.connect((self.local_settings.getServerHost(), int(self.local_settings.getServerPort())))
-            self.server_status = True
+            new_socket.connect((self.host_TF.getText(), int(self.port_TF.getText())))
+            self.local_settings.setIsServerOnline(True)
             message_string = "Server is up!"
             self.log(Level.INFO, message_string)
-            self.error_message.setText("")
             self.message.setText(message_string)
 
         except (socket.timeout, socket.error) as e:
-            self.server_status = False
+            self.local_settings.setIsServerOnline(False)
             err_string = "Server is down"
             self.error_message.setText(err_string)
-            self.error_message.setText(err_string)
+            self.message.setText("")
             self.log(Level.INFO, err_string)
         finally:
             new_socket.close()
@@ -414,7 +422,7 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
             subprocess.call([opener, self.config_location])
 
     def customize_components(self):
-        settings = self.get_settings()
+        settings = self.getSettings()
 
         self.host_TF.setText(settings.getServerHost())
         self.port_TF.setText(str(settings.getServerPort()))
@@ -678,14 +686,14 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbPanel0.setConstraints(self.blank_5_L, self.gbcPanel0)
         self.panel0.add(self.blank_5_L)
 
-        self.text_editor_BTN = \
-            JButton("Open config file", actionPerformed=self.open_text_editor)
+        self.check_server_connection_BTN = \
+            JButton("Check server connection", actionPerformed=self.check_server_connection)
         # self.save_Settings_BTN.setPreferredSize(Dimension(1, 20))
-        self.rbgPanel0.add(self.text_editor_BTN)
+        self.rbgPanel0.add(self.check_server_connection_BTN)
         self.gbcPanel0.gridx = 0
         self.gbcPanel0.gridy = 18
-        self.gbPanel0.setConstraints(self.text_editor_BTN, self.gbcPanel0)
-        self.panel0.add(self.text_editor_BTN)
+        self.gbPanel0.setConstraints(self.check_server_connection_BTN, self.gbcPanel0)
+        self.panel0.add(self.check_server_connection_BTN)
 
         self.blank_6_L = JLabel(" ")
         self.blank_6_L.setEnabled(True)
@@ -700,14 +708,14 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbPanel0.setConstraints(self.blank_6_L, self.gbcPanel0)
         self.panel0.add(self.blank_6_L)
 
-        self.check_server_connection_BTN = \
-            JButton("Check server connection", actionPerformed=self.check_server_connection)
+        self.text_editor_BTN = \
+            JButton("Open config file", actionPerformed=self.open_text_editor)
         # self.save_Settings_BTN.setPreferredSize(Dimension(1, 20))
-        self.rbgPanel0.add(self.check_server_connection_BTN)
+        self.rbgPanel0.add(self.text_editor_BTN)
         self.gbcPanel0.gridx = 0
         self.gbcPanel0.gridy = 20
-        self.gbPanel0.setConstraints(self.check_server_connection_BTN, self.gbcPanel0)
-        self.panel0.add(self.check_server_connection_BTN)
+        self.gbPanel0.setConstraints(self.text_editor_BTN, self.gbcPanel0)
+        self.panel0.add(self.text_editor_BTN)
 
         self.add(self.panel0)
 
