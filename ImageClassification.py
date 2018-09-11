@@ -327,13 +327,13 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
             self.local_settings.setMinProbability(json_configs['minProbability'])
 
             new_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            new_socket.settimeout(2)
+            new_socket.settimeout(1)
             try:
                 self.log(Level.INFO, "Testing connection with server")
                 new_socket.connect((self.local_settings.getServerHost(), int(self.local_settings.getServerPort())))
                 server_status=True
                 self.log(Level.INFO, "Server is up")
-            except socket.timeout:
+            except (socket.timeout, socket.error) as e:
                 server_status=False
                 err_string="Server is down"
                 self.error_message.setText(err_string)
