@@ -42,8 +42,11 @@ DEFAULT_MIN_PROBABILITY = 80
 DEFAULT_IMAGES_FORMAT = "jpg;png;jpeg"
 DEFAULT_PORT = 1337
 DEFAULT_HOST = "127.0.0.1"
+
+server_status=False
+
 class AutopsyImageClassificationModuleFactory(IngestModuleFactoryAdapter):
-    # TODO: give it a unique name.  Will be shown in module list, logs, etc.
+    # give it a unique name.  Will be shown in module list, logs, etc.
     moduleName = "Image Classification"
 
     def __init__(self):
@@ -52,7 +55,7 @@ class AutopsyImageClassificationModuleFactory(IngestModuleFactoryAdapter):
     def getModuleDisplayName(self):
         return self.moduleName
 
-    # TODO: Give it a description
+    # Give it a description
     def getModuleDescription(self):
         return "This module uses YOLO Object Detection System to classify images"
 
@@ -97,8 +100,8 @@ class AutopsyImageClassificationModule(FileIngestModule):
     # See: http://sleuthkit.org/autopsy/docs/api-docs/3.1/classorg_1_1sleuthkit_1_1autopsy_1_1ingest_1_1_ingest_job_context.html
     def startUp(self, context):
         self.context = context
-        # Throw an IngestModule.IngestModuleException exception if there was a problem setting up
-        # raise IngestModuleException(IngestModule(), "Oh No!")
+        if not server_status:
+            raise IngestModuleException(IngestModule(), "Server is down!")
         pass
 
     # Where the analysis is done.  Each file will be passed into here.
@@ -289,7 +292,7 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
     # Return the settings used
 
     def getSettings(self):
-
+        global server_status
         if not os.path.isfile(self.config_location):
             self.log(Level.INFO, "Configuration file not found, loading the default configuration")
             self.local_settings.setServerHost(DEFAULT_HOST)
@@ -322,6 +325,21 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
 
             self.local_settings.setMinFileSize(json_configs['minFileSize'])
             self.local_settings.setMinProbability(json_configs['minProbability'])
+
+            new_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            new_socket.settimeout(2)
+            try:
+                self.log(Level.INFO, "Testing connection with server")
+                new_socket.connect((self.local_settings.getServerHost(), int(self.local_settings.getServerPort())))
+                server_status=True
+                self.log(Level.INFO, "Server is up")
+            except socket.timeout:
+                server_status=False
+                err_string="Server is down"
+                self.error_message.setText(err_string)
+                self.log(Level.INFO, err_string)
+            finally:
+                new_socket.close()
 
             return self.local_settings
 
@@ -387,7 +405,6 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         message = "Settings saved "
         self.message.setText(message)
         self.log(Level.INFO, message + " in " + self.config_location)
-
 
     def openTextEditor(self, e):
         self.log(Level.INFO, "Lauching external text editor ")
@@ -642,8 +659,7 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbPanel0.setConstraints( self.message, self.gbcPanel0)
         self.panel0.add( self.message)
 
-        self.save_settings_BTN = \
-            JButton("Save Settings", actionPerformed=self.saveSettings)
+        self.save_settings_BTN = JButton("Save Settings", actionPerformed=self.saveSettings)
         # self.save_Settings_BTN.setPreferredSize(Dimension(1, 20))
         self.rbgPanel0.add(self.save_settings_BTN)
         self.gbcPanel0.gridx = 0
