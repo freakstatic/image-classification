@@ -176,6 +176,11 @@ class AutopsyImageClassificationModule(FileIngestModule):
                 nr_of_bytes_to_receive = self.receive_an_int_message(new_socket)
             elif nr_of_bytes_to_receive > 0:
                 response = new_socket.recv(nr_of_bytes_to_receive)
+                while len(response) < nr_of_bytes_to_receive:
+                    data = new_socket.recv(nr_of_bytes_to_receive-len(response))
+                    if not data:
+                        break
+                    response+=data
                 self.log(Level.INFO, "Received from image: "+ file_path + "the response: " + response)
                 return_value=json.loads(response)
                 break
