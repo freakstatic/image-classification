@@ -409,7 +409,7 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
     def openTextEditor(self, e):
         self.log(Level.INFO, "Lauching external text editor ")
         if sys.platform == "win32":
-            os.startfile(self.config_location)
+            subprocess.call(["notepad", self.config_location])
         else:
             opener ="open" if sys.platform == "darwin" else "xdg-open"
             subprocess.call([opener, self.config_location])
