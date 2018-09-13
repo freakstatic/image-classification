@@ -32,6 +32,7 @@ from org.sleuthkit.autopsy.casemodule.services import Blackboard
 import inspect
 import socket
 import json
+import types
 import struct
 import io
 import os, sys, subprocess
@@ -123,32 +124,40 @@ class AutopsyImageClassificationModule(FileIngestModule):
         # Use blackboard class to index blackboard artifacts for keyword search
         blackboard = Case.getCurrentCase().getServices().getBlackboard()
 
-        for detection in detections:
-            # only report the detections with high probability
-            if detection["probability"] < self.local_settings.getMinProbability():
-                return IngestModule.ProcessResult.OK
+        if isinstance(detections, list):
+            if len(detections)==0:
+                self.create_an_artifact(blackboard,file,"Cannot classify any object")
+            else:
+                for detection in detections:
+                    # only report the detections with high probability
+                    if detection["probability"] >= self.local_settings.getMinProbability():
+                        self.create_an_artifact(blackboard,file,detection["className"].title())
 
-            # Make an artifact on the blackboard.  TSK_INTERESTING_FILE_HIT is a generic type of
-            # artifact.  Refer to the developer docs for other examples.
-            art = file.newArtifact(BlackboardArtifact.ARTIFACT_TYPE.TSK_INTERESTING_FILE_HIT)
-            att = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_SET_NAME.getTypeID(),
-                                      AutopsyImageClassificationModuleFactory.moduleName,
-                                      detection["className"].title())
-            art.addAttribute(att)
-            try:
-                # index the artifact for keyword search
-                blackboard.indexArtifact(art)
-            except Blackboard.BlackboardException as e:
-                self.log(Level.SEVERE, "Error indexing artifact " + art.getDisplayName())
-
-            # Fire an event to notify the UI and others that there is a new artifact
-            IngestServices.getInstance().fireModuleDataEvent(
-                ModuleDataEvent(AutopsyImageClassificationModuleFactory.moduleName,
-                                BlackboardArtifact.ARTIFACT_TYPE.TSK_INTERESTING_FILE_HIT))
+        else:
+            self.log(Level.INFO, 'Error classifying image '+file.getLocalAbsPath()+' with error code: '+detections['errorCode']+'and message: '+detections['errorMessage'])
+            self.create_an_artifact(blackboard,file,"Error classifying image")
 
         self.log(Level.INFO, 'Finish...')
         # lock.release()
         return IngestModule.ProcessResult.OK
+
+    def create_an_artifact(self,blackboard,file,title):
+
+        art = file.newArtifact(BlackboardArtifact.ARTIFACT_TYPE.TSK_INTERESTING_FILE_HIT)
+        att = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_SET_NAME.getTypeID(),
+                                  AutopsyImageClassificationModuleFactory.moduleName,
+                                  title)
+        art.addAttribute(att)
+        try:
+            # index the artifact for keyword search
+            blackboard.indexArtifact(art)
+        except Blackboard.BlackboardException as e:
+            self.log(Level.SEVERE, "Error indexing artifact " + art.getDisplayName())
+
+        # Fire an event to notify the UI and others that there is a new artifact
+        IngestServices.getInstance().fireModuleDataEvent(
+            ModuleDataEvent(AutopsyImageClassificationModuleFactory.moduleName,
+                            BlackboardArtifact.ARTIFACT_TYPE.TSK_INTERESTING_FILE_HIT))
 
     def get_detections(self, file_path):
         # Connect the socket
@@ -165,29 +174,32 @@ class AutopsyImageClassificationModule(FileIngestModule):
         self.receive_an_int_message(new_socket)
 
         self.send_image_and_get_data(new_socket, file_path, file_size)
+        ack_status = self.receive_an_int_message(new_socket)
+
+        while ack_status == -1:
+            self.log(Level.INFO, "Re-send image: " + file_path)
+            self.send_image_and_get_data(new_socket, file_path, file_size)
+            ack_status = self.receive_an_int_message(new_socket)
+
+        return_value = None
+        new_socket.sendall(1)
 
         nr_of_bytes_to_receive = self.receive_an_int_message(new_socket)
-        return_value = None
-        while True:
-            # If there are no detections we can return now
-            if nr_of_bytes_to_receive == 0:
-                return_value = IngestModule.ProcessResult.OK
-                break
-            elif nr_of_bytes_to_receive == -1:
-                self.log(Level.INFO, "Re-send image: " + file_path)
-                self.send_image_and_get_data(new_socket, file_path, file_size)
-                nr_of_bytes_to_receive = self.receive_an_int_message(new_socket)
-            elif nr_of_bytes_to_receive > 0:
-                response = new_socket.recv(nr_of_bytes_to_receive)
-                while len(response) < nr_of_bytes_to_receive:
-                    data = new_socket.recv(nr_of_bytes_to_receive - len(response))
-                    if not data:
-                        break
-                    response += data
-                self.log(Level.INFO, "Received from image: " + file_path + "the response: " + response)
-                return_value = json.loads(response)
-                break
+        self.log(Level.INFO, "Received nr of bytes: " + str(nr_of_bytes_to_receive))
 
+        new_socket.sendall(1)
+        # If there are no detections we can return now
+        if nr_of_bytes_to_receive == 0:
+            return_value = IngestModule.ProcessResult.OK
+        elif nr_of_bytes_to_receive > 0:
+            response = new_socket.recv(nr_of_bytes_to_receive)
+            while len(response) < nr_of_bytes_to_receive:
+                data = new_socket.recv(nr_of_bytes_to_receive - len(response))
+                if not data:
+                    break
+                response += data
+            self.log(Level.INFO, "Received from image: " + file_path + "the response: " + response)
+            return_value = json.loads(response)
         new_socket.close()
         return return_value
 
