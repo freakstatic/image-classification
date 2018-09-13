@@ -44,6 +44,7 @@ DEFAULT_IMAGES_FORMAT = "jpg;png;jpeg"
 DEFAULT_PORT = 1337
 DEFAULT_HOST = "127.0.0.1"
 
+
 class AutopsyImageClassificationModuleFactory(IngestModuleFactoryAdapter):
     # give it a unique name.  Will be shown in module list, logs, etc.
     moduleName = "Image Classification"
@@ -125,23 +126,25 @@ class AutopsyImageClassificationModule(FileIngestModule):
         blackboard = Case.getCurrentCase().getServices().getBlackboard()
 
         if isinstance(detections, list):
-            if len(detections)==0:
-                self.create_an_artifact(blackboard,file,"Cannot classify any object")
+            if len(detections) == 0:
+                self.create_an_artifact(blackboard, file, "No known objects found")
             else:
                 for detection in detections:
                     # only report the detections with high probability
                     if detection["probability"] >= self.local_settings.getMinProbability():
-                        self.create_an_artifact(blackboard,file,detection["className"].title())
+                        self.create_an_artifact(blackboard, file, detection["className"].title())
 
         else:
-            self.log(Level.INFO, 'Error classifying image '+file.getLocalAbsPath()+' with error code: '+detections['errorCode']+'and message: '+detections['errorMessage'])
-            self.create_an_artifact(blackboard,file,"Error classifying image")
+            self.log(Level.INFO,
+                     'Error classifying image ' + file.getLocalAbsPath() + ' with error code: ' + detections[
+                         'errorCode'] + 'and message: ' + detections['errorMessage'])
+            self.create_an_artifact(blackboard, file, "ERROR - Processed with errors")
 
         self.log(Level.INFO, 'Finish...')
         # lock.release()
         return IngestModule.ProcessResult.OK
 
-    def create_an_artifact(self,blackboard,file,title):
+    def create_an_artifact(self, blackboard, file, title):
 
         art = file.newArtifact(BlackboardArtifact.ARTIFACT_TYPE.TSK_INTERESTING_FILE_HIT)
         att = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_SET_NAME.getTypeID(),
@@ -232,6 +235,7 @@ class AutopsyImageClassificationModule(FileIngestModule):
                 valid = True
 
         return valid
+
 
 class AutopsyImageClassificationModuleWithUISettings(IngestModuleIngestJobSettings):
     serialVersionUID = 1L
