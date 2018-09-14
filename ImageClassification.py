@@ -499,12 +499,12 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
             if y > 15:
                 y = 0
                 x = x + 1
+
             class_check_box = JCheckBox(line['name'])
             self.classes_of_interest_checkboxes.append(class_check_box)
             class_check_box.setEnabled(True)
             class_check_box.setSelected(line['enabled'])
-            # class_check_box.addItemListener(self.on_class_checkbox_clicked)
-            class_check_box.addActionListener(self.on_class_checkbox_clicked)
+            class_check_box.addItemListener(self.on_class_checkbox_clicked)
             gbcPanel.gridx = x
             gbcPanel.gridy = y
             gbcPanel.gridwidth = 1
