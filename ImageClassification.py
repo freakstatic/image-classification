@@ -3,14 +3,20 @@ from java.lang import Integer
 from java.util.logging import Level
 from java.text import NumberFormat
 from java.awt import Color
+from java.awt import Toolkit
+from java.awt import Dimension
 from java.awt import GridBagLayout
 from java.awt import GridBagConstraints
+from java.awt.Dialog import ModalityType
 from javax.swing import JPanel
+from javax.swing import JDialog
 from javax.swing import ButtonGroup
 from javax.swing import JTextField
 from javax.swing import JFormattedTextField
 from javax.swing import JLabel
 from javax.swing import JButton
+from javax.swing import JCheckBox
+from javax.swing import SwingUtilities
 from javax.swing.text import NumberFormatter
 
 from org.sleuthkit.datamodel import BlackboardArtifact
@@ -32,17 +38,17 @@ from org.sleuthkit.autopsy.casemodule.services import Blackboard
 import inspect
 import socket
 import json
-import types
 import struct
 import io
 import os, sys, subprocess
 
 CONFIG_FILE_NAME = 'config.json'
 DEFAULT_MIN_FILE_SIZE = 5
-DEFAULT_MIN_PROBABILITY = 80
+DEFAULT_MIN_PROBABILITY = 50
 DEFAULT_IMAGES_FORMAT = "jpg;png;jpeg"
 DEFAULT_PORT = 1337
 DEFAULT_HOST = "127.0.0.1"
+DEFAULT_CLASSES_OF_INTEREST='[{"name":"person","enabled":true},{"name":"bicycle","enabled":true},{"name":"car","enabled":true},{"name":"motorbike","enabled":true},{"name":"aeroplane","enabled":true},{"name":"bus","enabled":true},{"name":"train","enabled":true},{"name":"truck","enabled":true},{"name":"boat","enabled":true},{"name":"traffic light","enabled":true},{"name":"fire hydrant","enabled":true},{"name":"stop sign","enabled":true},{"name":"parking meter","enabled":true},{"name":"bench","enabled":true},{"name":"bird","enabled":true},{"name":"cat","enabled":true},{"name":"dog","enabled":true},{"name":"horse","enabled":true},{"name":"sheep","enabled":true},{"name":"cow","enabled":true},{"name":"elephant","enabled":true},{"name":"bear","enabled":true},{"name":"zebra","enabled":true},{"name":"giraffe","enabled":true},{"name":"backpack","enabled":true},{"name":"umbrella","enabled":true},{"name":"handbag","enabled":true},{"name":"tie","enabled":true},{"name":"suitcase","enabled":true},{"name":"frisbee","enabled":true},{"name":"skis","enabled":true},{"name":"snowboard","enabled":true},{"name":"sports ball","enabled":true},{"name":"kite","enabled":true},{"name":"baseball bat","enabled":true},{"name":"baseball glove","enabled":true},{"name":"skateboard","enabled":true},{"name":"surfboard","enabled":true},{"name":"tennis racket","enabled":true},{"name":"bottle","enabled":true},{"name":"wine glass","enabled":true},{"name":"cup","enabled":true},{"name":"fork","enabled":true},{"name":"knife","enabled":true},{"name":"spoon","enabled":true},{"name":"bowl","enabled":true},{"name":"banana","enabled":true},{"name":"apple","enabled":true},{"name":"sandwich","enabled":true},{"name":"orange","enabled":true},{"name":"broccoli","enabled":true},{"name":"carrot","enabled":true},{"name":"hot dog","enabled":true},{"name":"pizza","enabled":true},{"name":"donut","enabled":true},{"name":"cake","enabled":true},{"name":"chair","enabled":true},{"name":"sofa","enabled":true},{"name":"pottedplant","enabled":true},{"name":"bed","enabled":true},{"name":"diningtable","enabled":true},{"name":"toilet","enabled":true},{"name":"tvmonitor","enabled":true},{"name":"laptop","enabled":true},{"name":"mouse","enabled":true},{"name":"remote","enabled":true},{"name":"keyboard","enabled":true},{"name":"cell phone","enabled":true},{"name":"microwave","enabled":true},{"name":"oven","enabled":true},{"name":"toaster","enabled":true},{"name":"sink","enabled":true},{"name":"refrigerator","enabled":true},{"name":"book","enabled":true},{"name":"clock","enabled":true},{"name":"vase","enabled":true},{"name":"scissors","enabled":true},{"name":"teddy bear","enabled":true},{"name":"hair drier","enabled":true},{"name":"toothbrush","enabled":true}]'
 
 
 class AutopsyImageClassificationModuleFactory(IngestModuleFactoryAdapter):
@@ -83,7 +89,6 @@ class AutopsyImageClassificationModuleFactory(IngestModuleFactoryAdapter):
             raise IngestModuleException(err_1)
         self.settings = settings
         return AutopsyImageClassificationModuleWithUISettingsPanel(self.settings)
-
 
 class AutopsyImageClassificationModule(FileIngestModule):
     _logger = Logger.getLogger(AutopsyImageClassificationModuleFactory.moduleName)
@@ -236,7 +241,6 @@ class AutopsyImageClassificationModule(FileIngestModule):
 
         return valid
 
-
 class AutopsyImageClassificationModuleWithUISettings(IngestModuleIngestJobSettings):
     serialVersionUID = 1L
 
@@ -250,6 +254,7 @@ class AutopsyImageClassificationModuleWithUISettings(IngestModuleIngestJobSettin
         self.image_formats = ""
         self.min_file_size = 0
         self.min_probability = 0
+        self.classes_of_interest=[]
         self.server_online = False
 
     def getServerHost(self):
@@ -273,6 +278,9 @@ class AutopsyImageClassificationModuleWithUISettings(IngestModuleIngestJobSettin
     def isServerOnline(self):
         return self.server_online
 
+    def getClassesOfInterest(self):
+        return self.classes_of_interest
+
     def setServerHost(self, server_host):
         self.server_host = server_host
 
@@ -291,6 +299,8 @@ class AutopsyImageClassificationModuleWithUISettings(IngestModuleIngestJobSettin
     def setIsServerOnline(self, is_server_online):
         self.server_online = is_server_online
 
+    def setClassesOfInterest(self,classes_of_interest):
+        self.classes_of_interest=classes_of_interest
 
 class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobSettingsPanel):
     _logger = Logger.getLogger(AutopsyImageClassificationModuleFactory.moduleName)
@@ -304,9 +314,9 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.init_components()
         self.customize_components()
         self.check_server_connection(None)
+        self.classes_of_interest_changes_list=list();
 
     # Return the settings used
-
     def getSettings(self):
         if not os.path.isfile(self.config_location):
             self.log(Level.INFO, "Configuration file not found, loading the default configuration")
@@ -315,7 +325,7 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
             self.local_settings.setImageFormats(DEFAULT_IMAGES_FORMAT)
             self.local_settings.setMinFileSize(DEFAULT_MIN_FILE_SIZE)
             self.local_settings.setMinProbability(DEFAULT_MIN_PROBABILITY)
-
+            self.local_settings.setClassesOfInterest(json.loads(DEFAULT_CLASSES_OF_INTEREST))
             # self.saveSettings(None)
             return self.local_settings
         else:
@@ -340,6 +350,7 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
 
             self.local_settings.setMinFileSize(json_configs['minFileSize'])
             self.local_settings.setMinProbability(json_configs['minProbability'])
+            self.local_settings.setClassesOfInterest(json_configs['classesOfInterest'])
             return self.local_settings
 
     def check_server_connection(self, e):
@@ -417,7 +428,8 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
             },
             'imageFormats': image_formats_array,
             'minProbability': min_probability,
-            'minFileSize': min_file_size
+            'minFileSize': min_file_size,
+            'classesOfInterest': self.local_settings.getClassesOfInterest()
         }
 
         with io.open(self.config_location, 'w', encoding='utf-8') as f:
@@ -436,6 +448,85 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         else:
             opener = "open" if sys.platform == "darwin" else "xdg-open"
             subprocess.call([opener, self.config_location])
+
+    def on_save_classes_of_interest_click(self,e):
+        self.detectable_obejcts_dialog.setVisible(False)
+        for item in self.classes_of_interest_changes_list:
+            for class_oi in self.local_settings.getClassesOfInterest():
+                if item.getText()==class_oi['name']:
+                    self.log(Level.INFO, "match found "+class_oi['name']+" and is selected "+str(item.isSelected()))
+                    class_oi['enabled']=item.isSelected()
+                    break
+
+    def on_cancel_classes_of_interest_click(self,e):
+        self.detectable_obejcts_dialog.setVisible(False)
+        self.classes_of_interest_changes_list=list()
+
+    def on_class_checkbox_clicked(self,e):
+        self.classes_of_interest_changes_list.append(e.getSource())
+
+    def detectable_obejcts(self,e):
+        parentComponent = SwingUtilities.windowForComponent(self.panel0)
+        self.detectable_obejcts_dialog=JDialog(parentComponent,"Detectable Objects",ModalityType.APPLICATION_MODAL)
+        panel=JPanel()
+        self.detectable_obejcts_dialog.add(panel)
+        gbPanel = GridBagLayout()
+        gbcPanel = GridBagConstraints()
+        panel.setLayout(gbPanel)
+
+        y=0
+        x=0
+        for line in self.local_settings.getClassesOfInterest():
+            if y>15:
+                y=0
+                x=x+1
+            class_check_box = JCheckBox(line['name'])
+            class_check_box.setEnabled(True)
+            class_check_box.setSelected(line['enabled'])
+            class_check_box.addActionListener(self.on_class_checkbox_clicked)
+            gbcPanel.gridx = x
+            gbcPanel.gridy = y
+            gbcPanel.gridwidth = 1
+            gbcPanel.gridheight = 1
+            gbcPanel.fill = GridBagConstraints.BOTH
+            gbcPanel.weightx = 1
+            gbcPanel.weighty = 1
+            gbcPanel.anchor = GridBagConstraints.NORTH
+            gbPanel.setConstraints(class_check_box, gbcPanel)
+            panel.add(class_check_box)
+            y=y+1
+
+        save_button = JButton("Save")
+        save_button.setEnabled(True)
+        save_button.addActionListener(self.on_save_classes_of_interest_click)
+        gbcPanel.gridx = 4
+        gbcPanel.gridy = 20
+        gbcPanel.gridwidth = 1
+        gbcPanel.gridheight = 1
+        gbcPanel.fill = GridBagConstraints.BOTH
+        gbcPanel.weightx = 2
+        gbcPanel.weighty = 1
+        gbcPanel.anchor = GridBagConstraints.NORTH
+        gbPanel.setConstraints(save_button, gbcPanel)
+        panel.add(save_button)
+
+        cancel_button = JButton("Cancel")
+        cancel_button.setEnabled(True)
+        cancel_button.addActionListener(self.on_cancel_classes_of_interest_click)
+        gbcPanel.gridx = 2
+        gbcPanel.gridy = 20
+        gbcPanel.gridwidth = 1
+        gbcPanel.gridheight = 1
+        gbcPanel.fill = GridBagConstraints.BOTH
+        gbcPanel.weightx = 2
+        gbcPanel.weighty = 1
+        gbcPanel.anchor = GridBagConstraints.NORTH
+        gbPanel.setConstraints(cancel_button, gbcPanel)
+        panel.add(cancel_button)
+        self.detectable_obejcts_dialog.pack()
+        screenSize = Toolkit.getDefaultToolkit().getScreenSize()
+        self.detectable_obejcts_dialog.setLocation(int((screenSize.getWidth()/2)-(self.detectable_obejcts_dialog.getWidth()/2)),int((screenSize.getHeight()/2)-(self.detectable_obejcts_dialog.getHeight()/2)))
+        self.detectable_obejcts_dialog.setVisible(True)
 
     def customize_components(self):
         settings = self.getSettings()
@@ -724,12 +815,34 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.gbPanel0.setConstraints(self.blank_6_L, self.gbcPanel0)
         self.panel0.add(self.blank_6_L)
 
+        self.detectable_obejcts_BTN = \
+            JButton("Detectable objects", actionPerformed=self.detectable_obejcts)
+        # self.save_Settings_BTN.setPreferredSize(Dimension(1, 20))
+        self.rbgPanel0.add(self.detectable_obejcts_BTN)
+        self.gbcPanel0.gridx = 0
+        self.gbcPanel0.gridy = 20
+        self.gbPanel0.setConstraints(self.detectable_obejcts_BTN, self.gbcPanel0)
+        self.panel0.add(self.detectable_obejcts_BTN)
+
+        self.blank_7_L = JLabel(" ")
+        self.blank_7_L.setEnabled(True)
+        self.gbcPanel0.gridx = 2
+        self.gbcPanel0.gridy = 21
+        self.gbcPanel0.gridwidth = 1
+        self.gbcPanel0.gridheight = 1
+        self.gbcPanel0.fill = GridBagConstraints.BOTH
+        self.gbcPanel0.weightx = 1
+        self.gbcPanel0.weighty = 0
+        self.gbcPanel0.anchor = GridBagConstraints.NORTH
+        self.gbPanel0.setConstraints(self.blank_7_L, self.gbcPanel0)
+        self.panel0.add(self.blank_7_L)
+
         self.text_editor_BTN = \
             JButton("Open config file", actionPerformed=self.open_text_editor)
         # self.save_Settings_BTN.setPreferredSize(Dimension(1, 20))
         self.rbgPanel0.add(self.text_editor_BTN)
         self.gbcPanel0.gridx = 0
-        self.gbcPanel0.gridy = 20
+        self.gbcPanel0.gridy = 22
         self.gbPanel0.setConstraints(self.text_editor_BTN, self.gbcPanel0)
         self.panel0.add(self.text_editor_BTN)
 
