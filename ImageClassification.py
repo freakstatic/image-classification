@@ -321,6 +321,7 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.customize_components()
         self.check_server_connection(None)
         self.classes_of_interest_changes_list = list()
+        self.classes_of_interest_checkboxes = list()
 
     # Return the settings used
     def getSettings(self):
@@ -464,13 +465,23 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
                              "match found " + class_oi['name'] + " and is selected " + str(item.isSelected()))
                     class_oi['enabled'] = item.isSelected()
                     break
+        self.classes_of_interest_checkboxes = list()
 
     def on_cancel_classes_of_interest_click(self, e):
         self.detectable_obejcts_dialog.setVisible(False)
         self.classes_of_interest_changes_list = list()
+        self.classes_of_interest_checkboxes = list()
 
     def on_class_checkbox_clicked(self, e):
         self.classes_of_interest_changes_list.append(e.getSource())
+
+    def on_select_all_clicked(self, e):
+        for checkbox in self.classes_of_interest_checkboxes:
+            checkbox.setSelected(True)
+
+    def on_deselect_all_clicked(self, e):
+        for checkbox in self.classes_of_interest_checkboxes:
+            checkbox.setSelected(False)
 
     def show_detectable_objects_dialog(self, e):
         parentComponent = SwingUtilities.windowForComponent(self.panel0)
@@ -489,8 +500,10 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
                 y = 0
                 x = x + 1
             class_check_box = JCheckBox(line['name'])
+            self.classes_of_interest_checkboxes.append(class_check_box)
             class_check_box.setEnabled(True)
             class_check_box.setSelected(line['enabled'])
+            # class_check_box.addItemListener(self.on_class_checkbox_clicked)
             class_check_box.addActionListener(self.on_class_checkbox_clicked)
             gbcPanel.gridx = x
             gbcPanel.gridy = y
@@ -517,9 +530,9 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         gbPanel.setConstraints(blank_1_L, gbcPanel)
         panel.add(blank_1_L)
 
-        cancel_button = JButton("Cancel")
-        cancel_button.setEnabled(True)
-        cancel_button.addActionListener(self.on_cancel_classes_of_interest_click)
+        deselect_all_button = JButton("Deselect all")
+        deselect_all_button.setEnabled(True)
+        deselect_all_button.addActionListener(self.on_deselect_all_clicked)
         gbcPanel.gridx = 1
         gbcPanel.gridy = y + 2
         gbcPanel.gridwidth = 1
@@ -528,12 +541,12 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         gbcPanel.weightx = 2
         gbcPanel.weighty = 1
         gbcPanel.anchor = GridBagConstraints.NORTH
-        gbPanel.setConstraints(cancel_button, gbcPanel)
-        panel.add(cancel_button)
+        gbPanel.setConstraints(deselect_all_button, gbcPanel)
+        panel.add(deselect_all_button)
 
-        save_button = JButton("Save")
-        save_button.setEnabled(True)
-        save_button.addActionListener(self.on_save_classes_of_interest_click)
+        select_all_button = JButton("Select all")
+        select_all_button.setEnabled(True)
+        select_all_button.addActionListener(self.on_select_all_clicked)
         gbcPanel.gridx = 3
         gbcPanel.gridy = y + 2
         gbcPanel.gridwidth = 1
@@ -542,8 +555,8 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         gbcPanel.weightx = 2
         gbcPanel.weighty = 1
         gbcPanel.anchor = GridBagConstraints.NORTH
-        gbPanel.setConstraints(save_button, gbcPanel)
-        panel.add(save_button)
+        gbPanel.setConstraints(select_all_button, gbcPanel)
+        panel.add(select_all_button)
 
         blank_2_L = JLabel(" ")
         blank_2_L.setEnabled(True)
@@ -557,6 +570,48 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         gbcPanel.anchor = GridBagConstraints.NORTH
         gbPanel.setConstraints(blank_2_L, gbcPanel)
         panel.add(blank_2_L)
+
+        cancel_button = JButton("Cancel")
+        cancel_button.setEnabled(True)
+        cancel_button.addActionListener(self.on_cancel_classes_of_interest_click)
+        gbcPanel.gridx = 1
+        gbcPanel.gridy = y + 4
+        gbcPanel.gridwidth = 1
+        gbcPanel.gridheight = 1
+        gbcPanel.fill = GridBagConstraints.BOTH
+        gbcPanel.weightx = 2
+        gbcPanel.weighty = 1
+        gbcPanel.anchor = GridBagConstraints.NORTH
+        gbPanel.setConstraints(cancel_button, gbcPanel)
+        panel.add(cancel_button)
+
+
+        save_button = JButton("Save")
+        save_button.setEnabled(True)
+        save_button.addActionListener(self.on_save_classes_of_interest_click)
+        gbcPanel.gridx = 3
+        gbcPanel.gridy = y + 4
+        gbcPanel.gridwidth = 1
+        gbcPanel.gridheight = 1
+        gbcPanel.fill = GridBagConstraints.BOTH
+        gbcPanel.weightx = 2
+        gbcPanel.weighty = 1
+        gbcPanel.anchor = GridBagConstraints.NORTH
+        gbPanel.setConstraints(save_button, gbcPanel)
+        panel.add(save_button)
+
+        blank_3_L = JLabel(" ")
+        blank_3_L.setEnabled(True)
+        gbcPanel.gridx = 0
+        gbcPanel.gridy = y + 5
+        gbcPanel.gridwidth = 1
+        gbcPanel.gridheight = 1
+        gbcPanel.fill = GridBagConstraints.BOTH
+        gbcPanel.weightx = 1
+        gbcPanel.weighty = 0
+        gbcPanel.anchor = GridBagConstraints.NORTH
+        gbPanel.setConstraints(blank_3_L, gbcPanel)
+        panel.add(blank_3_L)
 
         self.detectable_obejcts_dialog.pack()
         screenSize = Toolkit.getDefaultToolkit().getScreenSize()
