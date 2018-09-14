@@ -137,7 +137,11 @@ class AutopsyImageClassificationModule(FileIngestModule):
                 for detection in detections:
                     # only report the detections with high probability
                     if detection["probability"] >= self.local_settings.getMinProbability():
-                        self.create_an_artifact(blackboard, file, detection["className"].title())
+                        for classes in self.local_settings.getClassesOfInterest():
+                            if detection['className']==classes['name'] and classes['enabled']:
+                                self.log(Level.INFO,'class name '+detection['className']+' enabled: '+str(classes['enabled']))
+                                self.create_an_artifact(blackboard, file, detection["className"].title())
+                                break
 
         else:
             self.log(Level.INFO,
@@ -314,7 +318,7 @@ class AutopsyImageClassificationModuleWithUISettingsPanel(IngestModuleIngestJobS
         self.init_components()
         self.customize_components()
         self.check_server_connection(None)
-        self.classes_of_interest_changes_list=list();
+        self.classes_of_interest_changes_list=list()
 
     # Return the settings used
     def getSettings(self):
