@@ -139,7 +139,6 @@ class AutopsyImageClassificationModule(FileIngestModule):
                     if detection["probability"] >= self.local_settings.getMinProbability():
                         for classes in self.local_settings.getClassesOfInterest():
                             if detection['className']==classes['name'] and classes['enabled']:
-                                self.log(Level.INFO,'class name '+detection['className']+' enabled: '+str(classes['enabled']))
                                 self.create_an_artifact(blackboard, file, detection["className"].title())
                                 break
 
