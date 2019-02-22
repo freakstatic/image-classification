@@ -1,4 +1,7 @@
 # image-classification
+## Deprecated
+**This module is currently deprecated, now you can use the most recent and more complete module that is [object.detection4autopsy](https://github.com/rcaceiro/obejct.detection4autopsy) and corresponding server [object.detection4autopsy.server](https://github.com/rcaceiro/object.detection4autopsy.server)**
+
 This module of Autopsy originated after we found nothing that made the classification of objects simply and fast for Autopsy. That is why we are moving forward with implementation.<br>
 It's operation is simple, it can be used locally where the server runs on the same machine of Autopsy or remotely, in case there is need to share among several clients in the case of the client investing in a good machine with some nVidia graphics to be able to accelerate it's classification.
 
